@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "smoke": "node --import tsx server/smoke.ts",
+    "eval:generate": "node --import tsx server/evaluate-generation.ts",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "check": "pnpm typecheck && pnpm build"
   },
@@ -16,6 +17,7 @@
     "@tailwindcss/vite": "^4.1.11",
     "framer-motion": "^12.23.12",
     "html2canvas": "^1.4.1",
+    "openai": "^6.34.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwindcss": "^4.1.11"

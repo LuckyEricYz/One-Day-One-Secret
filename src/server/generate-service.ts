@@ -21,7 +21,6 @@ import { buildSystemPrompt, buildUserPrompt } from "./prompt";
 import {
   type ProviderAttemptLog,
   type ProviderConfig,
-  type ProviderErrorType,
   callProvider,
   getProviderOrder,
   toAttemptLog,
@@ -73,6 +72,9 @@ function getProviderConfig(env: ServerEnv): ProviderConfig {
     openAiApiKey: env.OPENAI_API_KEY,
     openAiModel: env.OPENAI_MODEL,
     openAiBaseUrl: env.OPENAI_BASE_URL,
+    kimiApiKey: env.KIMI_API_KEY,
+    kimiModel: env.KIMI_MODEL,
+    kimiBaseUrl: env.KIMI_BASE_URL,
     geminiApiKey: env.GEMINI_API_KEY,
     geminiModel: env.GEMINI_MODEL
   };
@@ -144,6 +146,10 @@ function summarizeAttempts(attempts: ProviderAttemptLog[]): string {
 
       if (attempt.statusCode) {
         parts.push(`http:${attempt.statusCode}`);
+      }
+
+      if (attempt.providerRequestId) {
+        parts.push(`req:${attempt.providerRequestId}`);
       }
 
       if (attempt.errorType) {
@@ -257,6 +263,7 @@ export async function generateTianji(
             latencyMs: providerResult.latencyMs,
             status: "error",
             statusCode: providerResult.statusCode,
+            providerRequestId: providerResult.providerRequestId,
             errorType: "schema",
             errorSummary: "Model output did not match TianjiData."
           });
@@ -273,7 +280,8 @@ export async function generateTianji(
           model: providerResult.model,
           latencyMs: providerResult.latencyMs,
           status: "success",
-          statusCode: providerResult.statusCode
+          statusCode: providerResult.statusCode,
+          providerRequestId: providerResult.providerRequestId
         });
 
         const result = buildSuccessResult(
@@ -311,7 +319,7 @@ export async function generateTianji(
 
   const fallbackReasonCode = getFallbackReasonCode(attempts);
   const fallback = appendRequestMeta(
-    buildFallbackResult(calendar, hexagram, knowledgeEntries, payload.userProfile.todayMood),
+    buildFallbackResult(calendar, hexagram, knowledgeEntries, payload.userProfile),
     requestId,
     fallbackReasonCode
   );

@@ -52,7 +52,7 @@ export function loadDevEnv(cwd = process.cwd(), baseEnv: ServerEnv = process.env
   }
 
   const source =
-    baseEnv.OPENAI_API_KEY || baseEnv.GEMINI_API_KEY || baseEnv.AI_PROVIDER ? "shell" : "none";
+    baseEnv.OPENAI_API_KEY || baseEnv.GEMINI_API_KEY || baseEnv.KIMI_API_KEY || baseEnv.AI_PROVIDER ? "shell" : "none";
 
   return {
     env: { ...baseEnv },

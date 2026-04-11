@@ -90,7 +90,7 @@ export type TianjiMeta = {
   hexagramName: string;
   knowledgeIds: string[];
   generatedAt: string;
-  provider: "openai" | "gemini" | "fallback";
+  provider: "openai" | "gemini" | "kimi" | "fallback";
   isFallback: boolean;
   requestId: string;
   fallbackReasonCode?:

@@ -77,8 +77,14 @@ Pull Request / main push
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
 - `OPENAI_MODEL`
+- `KIMI_API_KEY`
+- `KIMI_BASE_URL`
+- `KIMI_MODEL`
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`
+
+其中 `OPENAI_BASE_URL` 如果使用代理地址，需要兼容 OpenAI SDK 的 Responses API，不是只兼容 `chat/completions` 即可。
+如果使用 Kimi，则单独配置 `KIMI_*` 变量，并通过 `AI_PROVIDER=kimi` 显式启用；默认入口是 `https://api.kimi.com/coding/v1`。
 
 > 当前方案不需要 GitHub Secrets 里的 `VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`，因为部署不走 Vercel CLI。
 

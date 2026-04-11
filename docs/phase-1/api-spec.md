@@ -94,10 +94,11 @@ Content-Type: application/json
 
 ### 3.1 输出约束
 
-- `mysticSaying` 不超过 20 个汉字
-- `mysticExplanation` 为 1-2 句自然语言
-- `healthAdvice` 必须正好 3 条
-- `dos` 与 `donts` 各 2 条
+- `mysticSaying` 为 4-16 个汉字的短句，适合作为卡片主标题
+- `mysticExplanation` 为 18-52 个汉字的 1-2 句自然语言
+- `healthAdvice` 必须正好 3 条，每条 8-24 个汉字
+- `dos` 与 `donts` 各 2 条，每条 2-10 个汉字，使用标签式短语
+- `healthAdvice` 之间不能重复，`dos` / `donts` 也不能直接复述建议正文
 - `meta.knowledgeIds` 必须记录命中的本地条目 id
 
 ## 4. 错误响应
@@ -150,7 +151,7 @@ type TianjiResult = {
     hexagramName: string;
     knowledgeIds: string[];
     generatedAt: string;
-    provider: "openai" | "gemini" | "fallback";
+    provider: "openai" | "gemini" | "kimi" | "fallback";
     isFallback: boolean;
     requestId: string;
     fallbackReasonCode?: "auth" | "network" | "timeout" | "http" | "parse" | "schema" | "provider_unavailable";
@@ -166,7 +167,10 @@ interface AIAdapter {
 ### 6.2 平台策略
 
 - `AI_PROVIDER=auto` 时按 `OpenAI -> Gemini -> fallback` 执行
-- `AI_PROVIDER=openai | gemini | fallback` 时强制单一路径，用于联调
+- `AI_PROVIDER=openai | kimi | gemini | fallback` 时强制单一路径，用于联调
+- OpenAI 路径使用官方 OpenAI SDK，并通过 Responses API + JSON Schema 约束结构化输出
+- `OPENAI_BASE_URL` 如有自定义，目标端点必须兼容 Responses API
+- Kimi 路径使用 OpenAI SDK 的 `chat.completions.create`，并读取 `KIMI_API_KEY / KIMI_BASE_URL / KIMI_MODEL`
 - Provider 返回非法 JSON 或结构不合法时，对当前平台只重试 1 次
 - 所有 provider 都不可用时返回本地 fallback 模板，并在 `meta` 中补充 `requestId` 与 `fallbackReasonCode`
 

@@ -17,6 +17,9 @@ importers:
       html2canvas:
         specifier: ^1.4.1
         version: 1.4.1
+      openai:
+        specifier: ^6.34.0
+        version: 6.34.0
       react:
         specifier: ^19.1.0
         version: 19.2.5
@@ -784,6 +787,18 @@ packages:
   node-releases@2.0.37:
     resolution: {integrity: sha512-1h5gKZCF+pO/o3Iqt5Jp7wc9rH3eJJ0+nh/CIoiRwjRxde/hAHyLPXYN4V3CqKAbiZPSeJFSWHmJsbkicta0Eg==}
 
+  openai@6.34.0:
+    resolution: {integrity: sha512-yEr2jdGf4tVFYG6ohmr3pF6VJuveP0EA/sS8TBx+4Eq5NT10alu5zg2dmxMXMgqpihRDQlFGpRt2XwsGj+Fyxw==}
+    hasBin: true
+    peerDependencies:
+      ws: ^8.18.0
+      zod: ^3.25 || ^4.0
+    peerDependenciesMeta:
+      ws:
+        optional: true
+      zod:
+        optional: true
+
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -1483,6 +1498,8 @@ snapshots:
   nanoid@3.3.11: {}
 
   node-releases@2.0.37: {}
+
+  openai@6.34.0: {}
 
   picocolors@1.1.1: {}
 

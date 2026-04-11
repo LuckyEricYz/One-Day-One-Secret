@@ -81,13 +81,17 @@ pnpm smoke
 ```
 
 - `.env.local` 提供默认值，命令行临时传入的环境变量会覆盖同名配置
-- `AI_PROVIDER` 支持 `auto`、`openai`、`gemini`、`fallback`
-- `OPENAI_BASE_URL` 默认是 `https://api.openai.com/v1`，也支持填 OpenAI 兼容代理地址
+- `AI_PROVIDER` 支持 `auto`、`openai`、`kimi`、`gemini`、`fallback`
+- OpenAI 路径使用官方 SDK + Responses API + structured outputs
+- Kimi 路径只在显式 `AI_PROVIDER=kimi` 时启用，走 OpenAI SDK 的 `chat.completions.create`
+- `OPENAI_BASE_URL` 默认是 `https://api.openai.com/v1`，也支持填兼容 Responses API 的 OpenAI 代理地址
+- `KIMI_BASE_URL` 默认是 `https://api.kimi.com/coding/v1`
 - `pnpm smoke` 用固定请求体验证当前 provider 路径是否真的可用
 
 ```bash
 AI_PROVIDER=fallback pnpm smoke
 AI_PROVIDER=openai pnpm smoke
+AI_PROVIDER=kimi pnpm smoke
 AI_PROVIDER=gemini pnpm smoke
 ```
 
