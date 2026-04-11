@@ -42,7 +42,7 @@ Pull Request / main push
 - `framework = vite`
 - `buildCommand = pnpm build`
 - `outputDirectory = dist`
-- `regions = ["hkg1"]`
+- `regions = ["sin1"]`
 - SPA 路由 rewrite 到 `index.html`
 
 ---
@@ -68,8 +68,8 @@ Pull Request / main push
 
 如果只是先打通部署，不接模型，最小配置只需要：
 
-| 变量名 | 值 | 环境 | 说明 |
-|:-------|:---|:-----|:-----|
+| 变量名        | 值         | 环境                | 说明                                      |
+| :------------ | :--------- | :------------------ | :---------------------------------------- |
 | `AI_PROVIDER` | `fallback` | Preview, Production | 强制走本地 fallback，避免模型变量阻塞部署 |
 
 等模型方案确认后，再补这些变量：

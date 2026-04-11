@@ -94,52 +94,60 @@ function summarizeError(error: unknown) {
   };
 }
 
-export async function GET(): Promise<Response> {
-  return Response.json(
-    {
-      success: false,
-      error: {
-        code: "INVALID_INPUT",
-        message: "Only POST is allowed."
-      }
-    },
-    { status: 405 }
-  );
-}
+export default async function handler(request: Request): Promise<Response> {
+  // Support both standard Request (from Edge/modern Node) and fallback to method check
+  if (request.method === "GET") {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: {
+          code: "INVALID_INPUT",
+          message: "Only POST is allowed."
+        }
+      }),
+      { status: 405, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
-export async function POST(request: Request): Promise<Response> {
   const requestId = randomUUID();
   const startedAt = Date.now();
   let body: unknown;
 
   try {
     body = await request.json();
-  } catch {
+  } catch (error) {
     console.warn(
       `[api/generate:${requestId}] invalid-json ${JSON.stringify({
-        contentType: request.headers.get("content-type") ?? "unknown"
+        contentType: request.headers.get("content-type") ?? "unknown",
+        error: error instanceof Error ? error.message : String(error)
       })}`
     );
 
-    return Response.json(
-      {
+    return new Response(
+      JSON.stringify({
         success: false,
         error: {
           code: "INVALID_INPUT",
           message: "Request body must be valid JSON."
         }
-      },
-      { status: 400 }
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
 
   try {
+    const envSummary = summarizeEnv(process.env);
     console.info(
       `[api/generate:${requestId}] request ${JSON.stringify({
         body: summarizeRequestBody(body),
-        env: summarizeEnv(process.env)
+        env: envSummary
       })}`
     );
+
+    // Check if at least one API key is present
+    if (!envSummary.hasOpenAiApiKey && !envSummary.hasGeminiApiKey && !envSummary.hasKimiApiKey) {
+      console.warn(`[api/generate:${requestId}] no-api-keys-warning: AI_PROVIDER=${process.env.AI_PROVIDER}`);
+    }
 
     const result = await generateTianji(body, process.env, requestId);
     const status = getResponseStatus(result);
@@ -157,26 +165,30 @@ export async function POST(request: Request): Promise<Response> {
       })}`
     );
 
-    return Response.json(result, { status });
+    return new Response(JSON.stringify(result), {
+      status,
+      headers: { "Content-Type": "application/json" }
+    });
   } catch (error) {
+    const errorDetails = summarizeError(error);
     console.error(
       `[api/generate:${requestId}] unexpected-error ${JSON.stringify({
         durationMs: Date.now() - startedAt,
         body: summarizeRequestBody(body),
         env: summarizeEnv(process.env),
-        error: summarizeError(error)
+        error: errorDetails
       })}`
     );
 
-    return Response.json(
-      {
+    return new Response(
+      JSON.stringify({
         success: false,
         error: {
           code: "INTERNAL_ERROR",
-          message: "生成服务发生未处理异常。"
+          message: `生成服务发生未处理异常: ${errorDetails.message || "未知错误"}`
         }
-      },
-      { status: 500 }
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }
