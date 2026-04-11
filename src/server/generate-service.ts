@@ -21,6 +21,7 @@ import { buildSystemPrompt, buildUserPrompt } from "./prompt";
 import {
   type ProviderAttemptLog,
   type ProviderConfig,
+  type ProviderName,
   callProvider,
   getProviderOrder,
   toAttemptLog,
@@ -173,49 +174,71 @@ function logProviderOutcome(
 ) {
   const summary = summarizeAttempts(attempts);
   const prefix = `[generate:${requestId}]`;
-
-  if (process.env.NODE_ENV === "production") {
-    if (finalProvider === "fallback") {
-      console.warn(`${prefix} provider=fallback reason=${fallbackReasonCode ?? "unknown"}`);
-      return;
-    }
-
-    console.info(`${prefix} provider=${finalProvider}`);
-    return;
-  }
-
   const suffix =
     finalProvider === "fallback"
       ? `provider=fallback reason=${fallbackReasonCode ?? "unknown"}`
       : `provider=${finalProvider}`;
 
+  if (finalProvider === "fallback") {
+    console.warn(`${prefix} ${suffix} ${summary}`);
+    return;
+  }
+
   console.info(`${prefix} ${suffix} ${summary}`);
+}
+
+function summarizeConfiguredProviders(env: ServerEnv, providerOrder: ProviderName[]): string {
+  const availableProviders = [
+    env.OPENAI_API_KEY ? "openai" : null,
+    env.GEMINI_API_KEY ? "gemini" : null,
+    env.KIMI_API_KEY ? "kimi" : null
+  ]
+    .filter((value): value is ProviderName => value !== null)
+    .join(",") || "none";
+
+  return `requested=${env.AI_PROVIDER ?? "auto"} order=${
+    providerOrder.join(",") || "fallback-only"
+  } configured=${availableProviders}`;
+}
+
+function logRejectedRequest(
+  requestId: string,
+  code: GenerateErrorResponse["error"]["code"],
+  detail: string
+) {
+  console.warn(`[generate:${requestId}] rejected code=${code} ${detail}`);
 }
 
 export async function generateTianji(
   body: unknown,
-  env: ServerEnv = process.env
+  env: ServerEnv = process.env,
+  requestId = randomUUID()
 ): Promise<GenerateSuccessResponse | GenerateErrorResponse> {
   if (!isValidRequestBody(body)) {
+    logRejectedRequest(requestId, "INVALID_INPUT", "validation=body-shape");
     return errorResponse("INVALID_INPUT", "输入结构或枚举值不合法。");
   }
 
   const payload = body as GenerateRequestPayload;
 
   if (payload.context.timezone !== SHANGHAI_TIMEZONE) {
+    logRejectedRequest(requestId, "INVALID_INPUT", `timezone=${payload.context.timezone}`);
     return errorResponse("INVALID_INPUT", "仅支持 Asia/Shanghai 时区。");
   }
 
   if (!Number.isInteger(payload.pressDurationMs) || payload.pressDurationMs < 2000) {
+    logRejectedRequest(requestId, "PRESS_TOO_SHORT", `pressDurationMs=${payload.pressDurationMs}`);
     return errorResponse("PRESS_TOO_SHORT", "请再静心一会儿。");
   }
 
   if (payload.pressDurationMs > 30000) {
+    logRejectedRequest(requestId, "INVALID_INPUT", `pressDurationMs=${payload.pressDurationMs}`);
     return errorResponse("INVALID_INPUT", "长按时间超出允许范围。");
   }
 
   const quota = getQuotaState(payload.clientId, payload.context.timestamp);
   if (quota.count >= MAX_DAILY_QUOTA) {
+    logRejectedRequest(requestId, "RATE_LIMIT_EXCEEDED", `clientId=${payload.clientId.slice(0, 8)} quota=${quota.count}`);
     return errorResponse(
       "RATE_LIMIT_EXCEEDED",
       "今日天机已满，请明日再来。",
@@ -223,7 +246,6 @@ export async function generateTianji(
     );
   }
 
-  const requestId = randomUUID();
   const calendar = getCalendarContext(payload.context.timestamp);
   const hexagram = getHexagramContext(
     payload.pressDurationMs,
@@ -242,6 +264,12 @@ export async function generateTianji(
   const providerConfig = getProviderConfig(env);
   const providerOrder = getProviderOrder(env.AI_PROVIDER);
   const attempts: ProviderAttemptLog[] = [];
+
+  console.info(
+    `[generate:${requestId}] start ${summarizeConfiguredProviders(env, providerOrder)} mood=${
+      payload.userProfile.todayMood
+    } pressDurationMs=${payload.pressDurationMs} location=${payload.context.location ? "yes" : "no"}`
+  );
 
   for (const provider of providerOrder) {
     let retryCount = 0;

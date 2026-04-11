@@ -56,7 +56,8 @@ type FetchJsonResponse = {
   body: unknown;
 };
 
-const REQUEST_TIMEOUT_MS = 15_000;
+// Keep upstream waits short so Vercel can return a local fallback instead of dying on slow providers.
+const REQUEST_TIMEOUT_MS = 4_000;
 
 function summarizeText(input: string): string {
   return input.replace(/\s+/gu, " ").trim().slice(0, 180);
