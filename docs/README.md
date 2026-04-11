@@ -1,44 +1,40 @@
-# 📚 一日天机 — 项目文档中心
+# 一日天机文档中心
 
-> 本目录包含「一日天机」项目的全部技术文档与设计规范。
+> 当前文档分为两类：MVP 现行规格、后续升级规划。
 
----
+## MVP 现行规格
 
-## 文档索引
-
-### 🏗 项目总览
-| 文档 | 说明 | 对应阶段 |
-|:-----|:-----|:---------|
-| [project-overview.md](./project-overview.md) | 项目架构总览、技术选型、目录结构 | 全局 |
-
-### 🔮 第一阶段：核心算法 Demo（1 周）
-| 文档 | 说明 | 状态 |
+| 文档 | 用途 | 状态 |
 |:-----|:-----|:-----|
-| [algorithm.md](./phase-1/algorithm.md) | 节气计算、天干地支推算、起卦算法的数学原理 | 📋 待实现 |
-| [knowledge-base-spec.md](./phase-1/knowledge-base-spec.md) | 养生知识库的采集标准、分类体系、JSON Schema | 📋 待实现 |
-| [prompt-tuning.md](./phase-1/prompt-tuning.md) | Prompt 工程手册：模板、调优记录、多平台适配 | 📋 待实现 |
-| [api-spec.md](./phase-1/api-spec.md) | AI 多平台适配器接口规范 | 📋 待实现 |
+| [project-overview.md](./project-overview.md) | 产品定位、技术口径、统一决策 | ✅ 已收敛 |
+| [phase-1/api-spec.md](./phase-1/api-spec.md) | 请求/响应结构、错误码、限额规则 | ✅ 已收敛 |
+| [phase-1/algorithm.md](./phase-1/algorithm.md) | 节气上下文、起卦和生成上下文规则 | ✅ 已收敛 |
+| [phase-1/knowledge-base-spec.md](./phase-1/knowledge-base-spec.md) | 本地知识条目格式与检索规则 | ✅ 已收敛 |
+| [phase-1/prompt-tuning.md](./phase-1/prompt-tuning.md) | Prompt、安全边界与兜底策略 | ✅ 已收敛 |
+| [phase-2/interaction-flow.md](./phase-2/interaction-flow.md) | MVP 用户链路、问卷和本地状态流转 | ✅ 已收敛 |
+| [phase-2/design-system.md](./phase-2/design-system.md) | MVP 视觉约束与核心组件规范 | ✅ 已收敛 |
+| [phase-2/performance.md](./phase-2/performance.md) | MVP 性能目标与降级策略 | ✅ 已收敛 |
+| [phase-2/deployment.md](./phase-2/deployment.md) | 部署与运维说明 | 📋 待实施 |
 
-### 🎴 第二阶段：H5 交互上线（2 周）
-| 文档 | 说明 | 状态 |
+## 后续升级规划
+
+| 文档 | 用途 | 状态 |
 |:-----|:-----|:-----|
-| [design-system.md](./phase-2/design-system.md) | 新中式视觉设计系统：配色、字体、组件规范 | 📋 待实现 |
-| [interaction-flow.md](./phase-2/interaction-flow.md) | 完整用户交互链路 + 异常处理 | 📋 待实现 |
-| [deployment.md](./phase-2/deployment.md) | Vercel 部署配置、环境变量、域名绑定 | 📋 待实现 |
-| [performance.md](./phase-2/performance.md) | 首屏加载优化、动画性能、图片压缩策略 | 📋 待实现 |
+| [phase-3/data-storage.md](./phase-3/data-storage.md) | 本地存储现状与未来同步升级方向 | 🧭 规划中 |
+| [phase-3/rag-architecture.md](./phase-3/rag-architecture.md) | 从本地 JSON 到 RAG 的升级条件 | 🧭 规划中 |
+| [phase-3/tongue-diagnosis.md](./phase-3/tongue-diagnosis.md) | 舌象输入升级路线 | 🧭 规划中 |
+| [phase-3/privacy-policy.md](./phase-3/privacy-policy.md) | MVP 隐私承诺与后续能力边界 | ✅ 已收敛 |
 
-### 🧬 第三阶段：深度融合（1 个月后）
-| 文档 | 说明 | 状态 |
-|:-----|:-----|:-----|
-| [tongue-diagnosis.md](./phase-3/tongue-diagnosis.md) | 舌诊 AI 接口对接方案 | 📋 待实现 |
-| [data-storage.md](./phase-3/data-storage.md) | 数据持久化方案：LocalStorage → Supabase | 📋 待实现 |
-| [rag-architecture.md](./phase-3/rag-architecture.md) | RAG 向量知识库架构设计 | 📋 待实现 |
-| [privacy-policy.md](./phase-3/privacy-policy.md) | 用户健康数据隐私政策 | 📋 待实现 |
+## 当前统一口径
 
----
+- 产品类型：生活方式建议应用，不做医疗诊断
+- AI 默认平台：OpenAI，Gemini 仅作备用
+- MVP 知识库：本地 JSON
+- MVP 限额：每日 5 次，`Asia/Shanghai` 零点重置
+- MVP 本地键：`tianji_client_id`、`tianji_profile`、`tianji_history`、`tianji_quota`
 
-## 文档维护规则
+## 维护规则
 
-- 每完成一个模块，更新对应文档状态为 `✅ 已完成`
-- 文档中的代码示例应与实际实现保持同步
-- 重大设计变更需在文档中记录变更日志
+- 文档一旦出现冲突，以 `project-overview.md` 和 `api-spec.md` 为准
+- 后续规划不得回写成“当前已实现”
+- 任何新增输入字段，必须同步更新 API、存储和隐私文档
