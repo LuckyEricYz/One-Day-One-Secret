@@ -6,9 +6,9 @@ import { buildStoredProfile } from "./core/questionnaire";
 import { getGrantedLocation, type OptionalLocation } from "./shared/location";
 import { constitutionLabels, healthTagLabels, moodLabels } from "./shared/labels";
 import {
-  STORAGE_KEYS,
   appendHistory,
   applyServerRemainingQuota,
+  clearAllLocalData,
   ensureClientId,
   getQuotaSnapshot,
   getRemainingLocalQuota,
@@ -203,6 +203,29 @@ export default function App() {
     setView("result");
   }
 
+  function handleResetLocalData() {
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm("这会清空本地画像、历史和今日额度。是否继续？");
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    clearAllLocalData();
+
+    const nextClientId = ensureClientId();
+    setClientId(nextClientId);
+    setProfile(null);
+    setHistory([]);
+    setResult(null);
+    setSelectedMood("calm");
+    setLocation(null);
+    setErrorMessage("");
+    setIsHistoryOpen(false);
+    setQuotaVersion((value) => value + 1);
+    setView("questionnaire");
+  }
+
   if (!ready) {
     return (
       <div className="flex min-h-dvh items-center justify-center px-6 text-sm text-[var(--color-muted)]">
@@ -282,6 +305,7 @@ export default function App() {
         open={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         onSelect={handleSelectHistory}
+        onResetLocalData={handleResetLocalData}
       />
 
       <footer className="mx-auto mt-4 w-full max-w-md text-center text-xs text-[var(--color-muted)]">
@@ -752,6 +776,7 @@ function HistoryDrawer(props: {
   open: boolean;
   onClose: () => void;
   onSelect: (entry: HistoryEntry) => void;
+  onResetLocalData: () => void;
 }) {
   return (
     <AnimatePresence>
@@ -816,6 +841,19 @@ function HistoryDrawer(props: {
                   </button>
                 ))
               )}
+            </div>
+
+            <div className="border-t border-[var(--color-border)] pt-4">
+              <button
+                type="button"
+                onClick={props.onResetLocalData}
+                className="w-full rounded-2xl border border-[rgba(198,106,85,0.35)] bg-[rgba(198,106,85,0.08)] px-4 py-3 text-sm text-[var(--color-negative)] transition hover:border-[rgba(198,106,85,0.55)]"
+              >
+                重置本地数据
+              </button>
+              <p className="mt-2 text-xs leading-5 text-[var(--color-muted)]">
+                会清空本地画像、历史记录、额度和设备标识，适合重新验证生成链路。
+              </p>
             </div>
           </motion.aside>
         </>

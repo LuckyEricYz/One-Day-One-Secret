@@ -56,8 +56,7 @@ type FetchJsonResponse = {
   body: unknown;
 };
 
-// Keep upstream waits short so Vercel can return a local fallback instead of dying on slow providers.
-const REQUEST_TIMEOUT_MS = 4_000;
+const REQUEST_TIMEOUT_MS = 12_000;
 
 function summarizeText(input: string): string {
   return input.replace(/\s+/gu, " ").trim().slice(0, 180);
@@ -541,8 +540,8 @@ export function getProviderOrder(preference: string | undefined): ProviderName[]
     return ["kimi"];
   }
 
-  // auto: openai → gemini
-  return ["openai", "gemini"];
+  // auto: openai only, then local fallback
+  return ["openai"];
 }
 
 export async function callProvider(

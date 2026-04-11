@@ -84,6 +84,7 @@ pnpm smoke
 - `AI_PROVIDER` 支持 `auto`、`openai`、`kimi`、`gemini`、`fallback`
 - OpenAI 路径使用官方 SDK + Responses API + structured outputs
 - Kimi 路径只在显式 `AI_PROVIDER=kimi` 时启用，走 OpenAI SDK 的 `chat.completions.create`
+- `AI_PROVIDER=auto` 默认只走 OpenAI，失败后直接回退本地 fallback，不再自动尝试 Gemini
 - `OPENAI_BASE_URL` 默认是 `https://api.openai.com/v1`，也支持填兼容 Responses API 的 OpenAI 代理地址
 - `KIMI_BASE_URL` 默认是 `https://api.kimi.com/coding/v1`
 - `pnpm smoke` 用固定请求体验证当前 provider 路径是否真的可用

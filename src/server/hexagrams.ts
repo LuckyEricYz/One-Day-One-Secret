@@ -50,7 +50,15 @@ function normalizeLineValue(lineValue: number): {
 }
 
 function nextSeed(seed: number): number {
-  return (seed * 1103515245 + 12345) & 0x7fffffff;
+  let next = seed >>> 0;
+
+  // Avoid low-bit repetition from the old LCG implementation, which made `% 4`
+  // collapse into near-constant line values and repeated hexagrams.
+  next ^= next << 13;
+  next ^= next >>> 17;
+  next ^= next << 5;
+
+  return next >>> 0;
 }
 
 function describeHexagram(key: string): { name: string; summary: string } {
@@ -70,14 +78,14 @@ export function getHexagramContext(
   timestamp: number,
   touchEntropy = 0
 ): HexagramContext {
-  let seed = pressDurationMs * 131 + (timestamp % 100000) + touchEntropy;
+  let seed = (pressDurationMs * 131 + (timestamp % 100000) + touchEntropy) >>> 0;
   const lines: number[] = [];
   const changedLines: number[] = [];
   const changedCandidate: number[] = [];
 
   for (let index = 0; index < 6; index += 1) {
     seed = nextSeed(seed);
-    const normalized = normalizeLineValue(seed % 4);
+    const normalized = normalizeLineValue((seed >>> 24) & 0b11);
     lines.push(normalized.current);
     changedCandidate.push(normalized.changed);
     if (normalized.changing) {

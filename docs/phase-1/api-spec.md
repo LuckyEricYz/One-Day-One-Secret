@@ -166,7 +166,7 @@ interface AIAdapter {
 
 ### 6.2 平台策略
 
-- `AI_PROVIDER=auto` 时按 `OpenAI -> Gemini -> fallback` 执行
+- `AI_PROVIDER=auto` 时按 `OpenAI -> fallback` 执行
 - `AI_PROVIDER=openai | kimi | gemini | fallback` 时强制单一路径，用于联调
 - OpenAI 路径使用官方 OpenAI SDK，并通过 Responses API + JSON Schema 约束结构化输出
 - `OPENAI_BASE_URL` 如有自定义，目标端点必须兼容 Responses API
