@@ -5,9 +5,9 @@ import type {
   Mood,
   TianjiData,
   UserProfile
-} from "../types";
-import { moodLabels } from "../shared/labels";
-import { normalizeGeneratedData } from "./validate";
+} from "../types.js";
+import { moodLabels } from "../shared/labels.js";
+import { normalizeGeneratedData } from "./validate.js";
 
 type KnowledgeCategory = KnowledgeEntry["category"];
 

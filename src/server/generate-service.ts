@@ -6,18 +6,18 @@ import type {
   GenerateSuccessResponse,
   TianjiData,
   TianjiMeta
-} from "../types";
+} from "../types.js";
 import {
   MAX_DAILY_QUOTA,
   SHANGHAI_TIMEZONE,
   getNextShanghaiMidnightIso,
   getShanghaiDateKey
-} from "../shared/time";
-import { getCalendarContext } from "./calendar";
-import { buildFallbackResult } from "./fallback";
-import { getHexagramContext } from "./hexagrams";
-import { retrieveKnowledge } from "./knowledge";
-import { buildSystemPrompt, buildUserPrompt } from "./prompt";
+} from "../shared/time.js";
+import { getCalendarContext } from "./calendar.js";
+import { buildFallbackResult } from "./fallback.js";
+import { getHexagramContext } from "./hexagrams.js";
+import { retrieveKnowledge } from "./knowledge.js";
+import { buildSystemPrompt, buildUserPrompt } from "./prompt.js";
 import {
   type ProviderAttemptLog,
   type ProviderConfig,
@@ -26,9 +26,9 @@ import {
   getProviderOrder,
   toAttemptLog,
   toProviderError
-} from "./providers";
-import type { ServerEnv } from "./env";
-import { isValidRequestBody, normalizeGeneratedData } from "./validate";
+} from "./providers.js";
+import type { ServerEnv } from "./env.js";
+import { isValidRequestBody, normalizeGeneratedData } from "./validate.js";
 
 const runtimeQuota = new Map<string, { date: string; count: number }>();
 const SCHEMA_RETRY_LIMIT = 2;

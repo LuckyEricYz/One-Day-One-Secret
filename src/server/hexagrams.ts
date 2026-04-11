@@ -1,4 +1,4 @@
-import type { HexagramContext } from "../types";
+import type { HexagramContext } from "../types.js";
 
 type Trigram = {
   key: string;

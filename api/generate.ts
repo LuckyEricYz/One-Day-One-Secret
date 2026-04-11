@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { generateTianji } from "../src/server/generate-service";
+import { generateTianji } from "../src/server/generate-service.js";
 
 type GenerateResult = Awaited<ReturnType<typeof generateTianji>>;
 

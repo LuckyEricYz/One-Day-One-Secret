@@ -1,5 +1,5 @@
-import type { Constitution, HealthTag, KnowledgeEntry, Mood } from "../types";
-import { KNOWLEDGE_ENTRIES } from "./knowledge-data";
+import type { Constitution, HealthTag, KnowledgeEntry, Mood } from "../types.js";
+import { KNOWLEDGE_ENTRIES } from "./knowledge-data.js";
 
 export type KnowledgeContext = {
   solarTermKey: string;

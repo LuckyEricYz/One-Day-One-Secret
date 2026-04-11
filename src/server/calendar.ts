@@ -1,6 +1,6 @@
-import { SOLAR_TERMS } from "./solarTerms";
-import type { CalendarContext } from "../types";
-import { getShanghaiDateKey } from "../shared/time";
+import { SOLAR_TERMS } from "./solarTerms.js";
+import type { CalendarContext } from "../types.js";
+import { getShanghaiDateKey } from "../shared/time.js";
 
 const STEMS = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"] as const;
 const BRANCHES = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"] as const;

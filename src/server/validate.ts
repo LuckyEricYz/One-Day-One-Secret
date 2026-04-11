@@ -5,8 +5,8 @@ import {
   TONGUE_DIAGNOSIS_OPTIONS,
   type GenerateRequestPayload,
   type TianjiData
-} from "../types";
-import { SHANGHAI_TIMEZONE } from "../shared/time";
+} from "../types.js";
+import { SHANGHAI_TIMEZONE } from "../shared/time.js";
 
 export const TIANJI_TEXT_LIMITS = {
   mysticSaying: { min: 4, max: 16 },

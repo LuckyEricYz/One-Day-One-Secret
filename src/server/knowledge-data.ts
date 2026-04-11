@@ -1,5 +1,5 @@
-import type { KnowledgeEntry } from "../types";
-import { SOLAR_TERMS } from "./solarTerms";
+import type { KnowledgeEntry } from "../types.js";
+import { SOLAR_TERMS } from "./solarTerms.js";
 
 const seasonalEntries: KnowledgeEntry[] = SOLAR_TERMS.map((term, index) => ({
   id: `seasonal-${String(index + 1).padStart(3, "0")}`,

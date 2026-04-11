@@ -1,5 +1,5 @@
-import type { CalendarContext, HexagramContext, KnowledgeEntry, UserProfile } from "../types";
-import { constitutionLabels, healthTagLabels, moodDescriptions, moodLabels } from "../shared/labels";
+import type { CalendarContext, HexagramContext, KnowledgeEntry, UserProfile } from "../types.js";
+import { constitutionLabels, healthTagLabels, moodDescriptions, moodLabels } from "../shared/labels.js";
 
 export function buildSystemPrompt(): string {
   return [

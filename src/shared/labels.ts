@@ -1,4 +1,4 @@
-import type { Constitution, HealthTag, Mood } from "../types";
+import type { Constitution, HealthTag, Mood } from "../types.js";
 
 export const constitutionLabels: Record<Constitution, string> = {
   balanced: "平和",

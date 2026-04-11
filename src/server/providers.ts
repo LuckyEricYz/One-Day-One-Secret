@@ -6,7 +6,7 @@ import OpenAI, {
   PermissionDeniedError
 } from "openai";
 
-import { OPENAI_TIANJI_RESPONSE_SCHEMA } from "./validate";
+import { OPENAI_TIANJI_RESPONSE_SCHEMA } from "./validate.js";
 
 export type ProviderName = "openai" | "gemini" | "kimi";
 export type ProviderPreference = ProviderName | "auto" | "fallback";
