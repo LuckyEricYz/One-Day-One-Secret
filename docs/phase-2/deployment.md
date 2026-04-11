@@ -1,172 +1,123 @@
 # 🚀 部署指南
 
-> Vercel 部署配置、环境变量设置与 CI/CD 流程
+> 当前采用混合模式：GitHub Actions 负责检查，Vercel Git 集成负责自动部署。
 
 ---
 
-## 1. 部署架构
+## 1. 目标结构
 
+```text
+Pull Request / main push
+  ├── GitHub Actions
+  │     └── pnpm check
+  └── Vercel Git Integration
+        ├── PR / feature branch -> Preview
+        └── main -> Production
 ```
-GitHub (main branch)
-    │
-    │ Push / PR Merge
-    ▼
-Vercel (自动构建)
-    │
-    ├── 静态资源 ──→ Vercel Edge CDN (全球加速)
-    │
-    └── /api/* ────→ Vercel Serverless Functions
-                          │
-                          ├── OpenAI API
-                          └── (备选) Gemini API
-```
+
+当前阶段先打通部署链路，不要求真实模型上线。因此 Preview 和 Production 都可以先使用 `AI_PROVIDER=fallback`。
 
 ---
 
-## 2. Vercel 项目配置
+## 2. 仓库内配置
 
-### 2.1 vercel.json
+### 2.1 GitHub Actions
 
-```json
-{
-  "framework": "vite",
-  "buildCommand": "pnpm run build",
-  "outputDirectory": "dist",
-  "regions": ["hkg1"],
-  "headers": [
-    {
-      "source": "/assets/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
-    },
-    {
-      "source": "/fonts/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
-    }
-  ],
-  "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ]
-}
+仓库新增 [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)，在以下事件运行：
+
+- `pull_request` 到 `main`
+- `push` 到 `main`
+
+执行内容固定为：
+
+```text
+1. pnpm install --frozen-lockfile
+2. pnpm check
 ```
 
-> **Region**: 选择 `hkg1`（香港）以降低国内用户访问延迟
+### 2.2 vercel.json
 
-### 2.2 环境变量配置
+当前仓库的 [vercel.json](../../vercel.json) 负责：
 
-在 Vercel Dashboard → Settings → Environment Variables 中设置：
+- `framework = vite`
+- `buildCommand = pnpm build`
+- `outputDirectory = dist`
+- `regions = ["hkg1"]`
+- SPA 路由 rewrite 到 `index.html`
+
+---
+
+## 3. 你需要在平台里手动配置的内容
+
+### 3.1 GitHub
+
+- 仓库管理员权限
+- 启用 GitHub Actions
+- 给 `main` 配置 Branch protection
+- 将 `CI / check` 设为 required status check
+
+### 3.2 Vercel
+
+1. 在 Vercel Dashboard 中导入当前 GitHub 仓库
+2. Framework Preset 选择 `Vite`
+3. Root Directory 保持 `./`
+4. Production Branch 选择 `main`
+5. 保持 Git Integration 开启
+
+### 3.3 Vercel 环境变量
+
+如果只是先打通部署，不接模型，最小配置只需要：
 
 | 变量名 | 值 | 环境 | 说明 |
 |:-------|:---|:-----|:-----|
-| `AI_PROVIDER` | `openai` | Production, Preview | AI 平台选择 |
-| `OPENAI_API_KEY` | `sk-...` | Production, Preview | OpenAI Key |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Production, Preview | 模型名 |
-| `RATE_LIMIT_PER_DAY` | `5` | Production | 每日限额 |
-| `GEMINI_API_KEY` | `AIza...` | Production, Preview | Gemini Key（备选） |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Production, Preview | Gemini 模型 |
+| `AI_PROVIDER` | `fallback` | Preview, Production | 强制走本地 fallback，避免模型变量阻塞部署 |
 
-### 2.3 GitHub 集成
+等模型方案确认后，再补这些变量：
 
-1. 在 Vercel Dashboard 中 Import GitHub Repository
-2. 选择 `LuckyEricYz/One-Day-One-Secret`
-3. Framework Preset: Vite
-4. Root Directory: `./`
-5. 自动部署触发：push to `main` branch
+- `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
+- `OPENAI_MODEL`
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
+
+> 当前方案不需要 GitHub Secrets 里的 `VERCEL_TOKEN`、`VERCEL_ORG_ID`、`VERCEL_PROJECT_ID`，因为部署不走 Vercel CLI。
 
 ---
 
-## 3. 本地开发
+## 4. 本地与预览验证
 
-### 3.1 环境准备
+### 4.1 本地
 
 ```bash
-# 克隆项目
-git clone https://github.com/LuckyEricYz/One-Day-One-Secret.git
-cd One-Day-One-Secret
-
-# 安装依赖
 pnpm install
-
-# 创建本地环境变量
-cp .env.example .env.local
-# 编辑 .env.local 填入你的 API Keys
-
-# 启动开发服务器
-pnpm run dev
+pnpm check
+pnpm dev
+AI_PROVIDER=fallback pnpm smoke
 ```
 
-### 3.2 本地 Serverless 函数调试
+### 4.2 Preview
 
-```bash
-# 安装 Vercel CLI
-pnpm add -g vercel
+- 发起一个到 `main` 的 PR
+- 确认 GitHub Actions 通过
+- 确认 Vercel 自动生成 Preview URL
+- 打开站点，验证：
+  - 首页可访问
+  - 前端路由刷新不 404
+  - `/api/generate` 返回 200
+  - 返回结果 `meta.provider = "fallback"`
 
-# 链接项目
-vercel link
+### 4.3 Production
 
-# 拉取线上环境变量到本地
-vercel env pull .env.local
-
-# 使用 Vercel Dev 启动（支持 /api 路由）
-vercel dev
-```
+- 合并到 `main`
+- 确认 GitHub Actions 在 `main` 通过
+- 确认 Vercel 自动生成 Production Deployment
+- 验证线上站点和 `/api/generate` 正常可用
 
 ---
 
-## 4. CI/CD 流程
+## 5. 后续升级
 
-### 4.1 分支策略
+部署链路打通后，再单独做这两件事：
 
-```
-main ────→ Production 自动部署
-  │
-  └── feature/* ──→ Preview 部署（每个 PR 独立 URL）
-```
-
-### 4.2 构建流程
-
-```
-1. pnpm install        (依赖安装)
-2. pnpm run lint       (代码检查)
-3. pnpm run build      (Vite 生产构建)
-4. Vercel 自动部署
-```
-
-### 4.3 预览部署
-- 每个 Pull Request 自动生成预览 URL
-- 格式：`one-day-one-secret-{hash}.vercel.app`
-- 用于代码 Review 和测试
-
----
-
-## 5. 域名配置（后续）
-
-### 5.1 当前
-- 使用 Vercel 默认域名：`one-day-one-secret.vercel.app`
-
-### 5.2 自定义域名绑定（后续操作）
-1. 在 Vercel Dashboard → Settings → Domains
-2. 添加自定义域名
-3. 在域名注册商处添加 DNS 记录
-4. 等待 SSL 证书自动签发
-
----
-
-## 6. 监控与日志
-
-### 6.1 Vercel Analytics（免费）
-- 自动收集 Core Web Vitals
-- 页面加载性能监控
-- 无需额外配置
-
-### 6.2 Serverless 函数日志
-- Vercel Dashboard → Deployments → Functions
-- 可查看每次 API 调用的日志与耗时
-- 重点关注：AI API 响应时间、错误率
-
-### 6.3 告警（后续）
-- 可接入 Vercel 的 Webhook 通知
-- API 错误率 > 10% 时触发告警
+- 把 Preview / Production 环境从 `fallback` 切到真实模型
+- 增加自定义域名、监控和告警

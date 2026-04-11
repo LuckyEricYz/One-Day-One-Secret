@@ -2,11 +2,21 @@ import http from "node:http";
 
 import { createServer as createViteServer } from "vite";
 
+import { loadDevEnv } from "../src/server/env";
 import { generateTianji } from "../src/server/generate-service";
 
-const PORT = Number(process.env.PORT || 5173);
-
 async function main() {
+  const loadedEnv = loadDevEnv();
+  const port = Number(loadedEnv.env.PORT || 5173);
+
+  if (loadedEnv.source === "env.local") {
+    console.info(`[dev] loaded defaults from ${loadedEnv.filePath}`);
+  } else if (loadedEnv.source === "shell") {
+    console.info("[dev] using shell environment fallback because .env.local was not found");
+  } else {
+    console.info("[dev] no local AI credentials found; requests will fall back");
+  }
+
   const vite = await createViteServer({
     server: {
       middlewareMode: true
@@ -24,7 +34,7 @@ async function main() {
       req.on("end", async () => {
         try {
           const parsed = body ? JSON.parse(body) : null;
-          const result = await generateTianji(parsed);
+          const result = await generateTianji(parsed, loadedEnv.env);
           const status = result.success
             ? 200
             : result.error.code === "RATE_LIMIT_EXCEEDED"
@@ -61,14 +71,12 @@ async function main() {
     });
   });
 
-  server.listen(PORT, "0.0.0.0", () => {
-    // eslint-disable-next-line no-console
-    console.log(`Dev server running at http://localhost:${PORT}`);
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`Dev server running at http://localhost:${port}`);
   });
 }
 
 main().catch((error) => {
-  // eslint-disable-next-line no-console
   console.error(error);
   process.exit(1);
 });

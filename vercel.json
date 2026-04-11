@@ -1,7 +1,9 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "buildCommand": "pnpm build",
   "outputDirectory": "dist",
+  "regions": ["hkg1"],
   "rewrites": [
     {
       "source": "/((?!api/).*)",
@@ -9,4 +11,3 @@
     }
   ]
 }
-

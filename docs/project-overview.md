@@ -118,7 +118,8 @@ MVP 只保留以下能力：
     "knowledgeIds": ["seasonal-003", "sleep-004"],
     "generatedAt": "2026-04-11T13:30:00.000Z",
     "provider": "openai",
-    "isFallback": false
+    "isFallback": false,
+    "requestId": "9d7c3e1e-70b8-4604-b97f-cc5b2efdf6b8"
   }
 }
 ```
@@ -152,7 +153,7 @@ data/
   -> 当日选择 mood
   -> 长按生成随机种子
   -> 服务端计算节气上下文、起卦、知识检索
-  -> 调用 OpenAI
+  -> 调用当前 AI provider（OpenAI，失败后切 Gemini）
   -> 校验 JSON
   -> 返回结果并写入 tianji_history / tianji_quota
 ```

@@ -84,7 +84,8 @@ Content-Type: application/json
       "knowledgeIds": ["seasonal-003", "sleep-004"],
       "generatedAt": "2026-04-11T13:30:00.000Z",
       "provider": "openai",
-      "isFallback": false
+      "isFallback": false,
+      "requestId": "9d7c3e1e-70b8-4604-b97f-cc5b2efdf6b8"
     }
   },
   "remainingQuota": 4
@@ -117,9 +118,7 @@ Content-Type: application/json
 | `INVALID_INPUT` | 400 | 输入结构或枚举值非法 |
 | `PRESS_TOO_SHORT` | 400 | 长按不足 2 秒 |
 | `RATE_LIMIT_EXCEEDED` | 429 | 当日额度已满 |
-| `AI_SERVICE_ERROR` | 502 | 主平台和备用平台都失败 |
-| `AI_OUTPUT_INVALID` | 500 | 模型返回格式不合法 |
-| `INTERNAL_ERROR` | 500 | 未归类内部错误 |
+| `INTERNAL_ERROR` | 500 | 本地开发代理或未捕获异常导致的内部错误 |
 
 ## 5. 限额与身份规则
 
@@ -151,8 +150,10 @@ type TianjiResult = {
     hexagramName: string;
     knowledgeIds: string[];
     generatedAt: string;
-    provider: string;
+    provider: "openai" | "gemini" | "fallback";
     isFallback: boolean;
+    requestId: string;
+    fallbackReasonCode?: "auth" | "network" | "timeout" | "http" | "parse" | "schema" | "provider_unavailable";
   };
 };
 
@@ -164,9 +165,10 @@ interface AIAdapter {
 
 ### 6.2 平台策略
 
-- 默认使用 OpenAI
-- OpenAI 失败后切换 Gemini 重试 1 次
-- 两个平台都失败时返回本地 fallback 模板，并标记 `meta.isFallback = true`
+- `AI_PROVIDER=auto` 时按 `OpenAI -> Gemini -> fallback` 执行
+- `AI_PROVIDER=openai | gemini | fallback` 时强制单一路径，用于联调
+- Provider 返回非法 JSON 或结构不合法时，对当前平台只重试 1 次
+- 所有 provider 都不可用时返回本地 fallback 模板，并在 `meta` 中补充 `requestId` 与 `fallbackReasonCode`
 
 ## 7. 输入校验清单
 

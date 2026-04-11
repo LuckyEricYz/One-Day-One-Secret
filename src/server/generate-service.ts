@@ -1,19 +1,37 @@
+import { randomUUID } from "node:crypto";
+
 import type {
   GenerateErrorResponse,
   GenerateRequestPayload,
   GenerateSuccessResponse,
-  TianjiData
+  TianjiData,
+  TianjiMeta
 } from "../types";
-import { MAX_DAILY_QUOTA, SHANGHAI_TIMEZONE, getNextShanghaiMidnightIso, getShanghaiDateKey } from "../shared/time";
+import {
+  MAX_DAILY_QUOTA,
+  SHANGHAI_TIMEZONE,
+  getNextShanghaiMidnightIso,
+  getShanghaiDateKey
+} from "../shared/time";
 import { getCalendarContext } from "./calendar";
 import { buildFallbackResult } from "./fallback";
 import { getHexagramContext } from "./hexagrams";
 import { retrieveKnowledge } from "./knowledge";
 import { buildSystemPrompt, buildUserPrompt } from "./prompt";
-import { generateWithProviders } from "./providers";
+import {
+  type ProviderAttemptLog,
+  type ProviderConfig,
+  type ProviderErrorType,
+  callProvider,
+  getProviderOrder,
+  toAttemptLog,
+  toProviderError
+} from "./providers";
+import type { ServerEnv } from "./env";
 import { isValidRequestBody, normalizeGeneratedData } from "./validate";
 
 const runtimeQuota = new Map<string, { date: string; count: number }>();
+const SCHEMA_RETRY_LIMIT = 2;
 
 function errorResponse(
   code: GenerateErrorResponse["error"]["code"],
@@ -50,9 +68,127 @@ function incrementQuota(clientId: string, timestamp: number): number {
   return Math.max(0, MAX_DAILY_QUOTA - state.count);
 }
 
+function getProviderConfig(env: ServerEnv): ProviderConfig {
+  return {
+    openAiApiKey: env.OPENAI_API_KEY,
+    openAiModel: env.OPENAI_MODEL,
+    openAiBaseUrl: env.OPENAI_BASE_URL,
+    geminiApiKey: env.GEMINI_API_KEY,
+    geminiModel: env.GEMINI_MODEL
+  };
+}
+
+function getFallbackReasonCode(attempts: ProviderAttemptLog[]): TianjiMeta["fallbackReasonCode"] {
+  if (attempts.length === 0) {
+    return "provider_unavailable";
+  }
+
+  const actionableAttempt = [...attempts]
+    .reverse()
+    .find((attempt) => attempt.errorType && attempt.errorType !== "provider_unavailable");
+
+  return actionableAttempt?.errorType ?? attempts[attempts.length - 1].errorType ?? "provider_unavailable";
+}
+
+function appendRequestMeta(
+  data: TianjiData,
+  requestId: string,
+  fallbackReasonCode?: TianjiMeta["fallbackReasonCode"]
+): TianjiData {
+  return {
+    ...data,
+    meta: {
+      ...data.meta,
+      requestId,
+      fallbackReasonCode
+    }
+  };
+}
+
+function buildSuccessResult(
+  normalized: Omit<TianjiData, "meta">,
+  requestId: string,
+  provider: TianjiMeta["provider"],
+  calendar: ReturnType<typeof getCalendarContext>,
+  hexagram: ReturnType<typeof getHexagramContext>,
+  knowledgeIds: string[]
+): TianjiData {
+  return {
+    ...normalized,
+    meta: {
+      solarTermName: calendar.solarTermName,
+      ganZhiSummary: calendar.ganZhiSummary,
+      hexagramName: hexagram.name,
+      knowledgeIds,
+      generatedAt: new Date().toISOString(),
+      provider,
+      isFallback: false,
+      requestId
+    }
+  };
+}
+
+function summarizeAttempts(attempts: ProviderAttemptLog[]): string {
+  if (attempts.length === 0) {
+    return "no provider attempts";
+  }
+
+  return attempts
+    .map((attempt) => {
+      const parts = [
+        attempt.provider,
+        attempt.model,
+        `${attempt.latencyMs}ms`,
+        attempt.status
+      ];
+
+      if (attempt.statusCode) {
+        parts.push(`http:${attempt.statusCode}`);
+      }
+
+      if (attempt.errorType) {
+        parts.push(`type:${attempt.errorType}`);
+      }
+
+      if (attempt.errorSummary) {
+        parts.push(`reason:${attempt.errorSummary}`);
+      }
+
+      return parts.join(" ");
+    })
+    .join(" | ");
+}
+
+function logProviderOutcome(
+  requestId: string,
+  attempts: ProviderAttemptLog[],
+  finalProvider: TianjiMeta["provider"],
+  fallbackReasonCode?: TianjiMeta["fallbackReasonCode"]
+) {
+  const summary = summarizeAttempts(attempts);
+  const prefix = `[generate:${requestId}]`;
+
+  if (process.env.NODE_ENV === "production") {
+    if (finalProvider === "fallback") {
+      console.warn(`${prefix} provider=fallback reason=${fallbackReasonCode ?? "unknown"}`);
+      return;
+    }
+
+    console.info(`${prefix} provider=${finalProvider}`);
+    return;
+  }
+
+  const suffix =
+    finalProvider === "fallback"
+      ? `provider=fallback reason=${fallbackReasonCode ?? "unknown"}`
+      : `provider=${finalProvider}`;
+
+  console.info(`${prefix} ${suffix} ${summary}`);
+}
+
 export async function generateTianji(
   body: unknown,
-  env: Record<string, string | undefined> = process.env
+  env: ServerEnv = process.env
 ): Promise<GenerateSuccessResponse | GenerateErrorResponse> {
   if (!isValidRequestBody(body)) {
     return errorResponse("INVALID_INPUT", "输入结构或枚举值不合法。");
@@ -81,6 +217,7 @@ export async function generateTianji(
     );
   }
 
+  const requestId = randomUUID();
   const calendar = getCalendarContext(payload.context.timestamp);
   const hexagram = getHexagramContext(
     payload.pressDurationMs,
@@ -93,51 +230,98 @@ export async function generateTianji(
     mood: payload.userProfile.todayMood,
     healthTags: payload.userProfile.healthTags
   });
-
+  const knowledgeIds = knowledgeEntries.map((entry) => entry.id);
   const systemPrompt = buildSystemPrompt();
   const userPrompt = buildUserPrompt(calendar, hexagram, payload.userProfile, knowledgeEntries);
+  const providerConfig = getProviderConfig(env);
+  const providerOrder = getProviderOrder(env.AI_PROVIDER);
+  const attempts: ProviderAttemptLog[] = [];
 
-  let result: TianjiData | null = null;
+  for (const provider of providerOrder) {
+    let retryCount = 0;
 
-  try {
-    const providerResult = await generateWithProviders(env.AI_PROVIDER, {
-      openAiApiKey: env.OPENAI_API_KEY,
-      openAiModel: env.OPENAI_MODEL,
-      geminiApiKey: env.GEMINI_API_KEY,
-      geminiModel: env.GEMINI_MODEL
-    }, systemPrompt, userPrompt);
+    while (retryCount < SCHEMA_RETRY_LIMIT) {
+      try {
+        const providerResult = await callProvider(
+          provider,
+          providerConfig,
+          systemPrompt,
+          userPrompt
+        );
+        const normalized = normalizeGeneratedData(providerResult.payload);
 
-    const normalized = normalizeGeneratedData(providerResult.payload);
-    if (!normalized) {
-      throw new Error("Model output validation failed.");
-    }
+        if (!normalized) {
+          attempts.push({
+            provider: providerResult.provider,
+            model: providerResult.model,
+            latencyMs: providerResult.latencyMs,
+            status: "error",
+            statusCode: providerResult.statusCode,
+            errorType: "schema",
+            errorSummary: "Model output did not match TianjiData."
+          });
 
-    result = {
-      ...normalized,
-      meta: {
-        solarTermName: calendar.solarTermName,
-        ganZhiSummary: calendar.ganZhiSummary,
-        hexagramName: hexagram.name,
-        knowledgeIds: knowledgeEntries.map((entry) => entry.id),
-        generatedAt: new Date().toISOString(),
-        provider: providerResult.provider,
-        isFallback: false
+          retryCount += 1;
+          if (retryCount < SCHEMA_RETRY_LIMIT) {
+            continue;
+          }
+          break;
+        }
+
+        attempts.push({
+          provider: providerResult.provider,
+          model: providerResult.model,
+          latencyMs: providerResult.latencyMs,
+          status: "success",
+          statusCode: providerResult.statusCode
+        });
+
+        const result = buildSuccessResult(
+          normalized,
+          requestId,
+          providerResult.provider,
+          calendar,
+          hexagram,
+          knowledgeIds
+        );
+        logProviderOutcome(requestId, attempts, providerResult.provider);
+
+        const remainingQuota = incrementQuota(payload.clientId, payload.context.timestamp);
+        return {
+          success: true,
+          data: result,
+          remainingQuota
+        };
+      } catch (error) {
+        const providerError = toProviderError(error);
+        attempts.push(toAttemptLog(providerError));
+
+        if (
+          (providerError.errorType === "parse" || providerError.errorType === "schema") &&
+          retryCount + 1 < SCHEMA_RETRY_LIMIT
+        ) {
+          retryCount += 1;
+          continue;
+        }
+
+        break;
       }
-    };
-  } catch {
-    result = buildFallbackResult(
-      calendar,
-      hexagram,
-      knowledgeEntries,
-      payload.userProfile.todayMood
-    );
+    }
   }
+
+  const fallbackReasonCode = getFallbackReasonCode(attempts);
+  const fallback = appendRequestMeta(
+    buildFallbackResult(calendar, hexagram, knowledgeEntries, payload.userProfile.todayMood),
+    requestId,
+    fallbackReasonCode
+  );
+
+  logProviderOutcome(requestId, attempts, "fallback", fallbackReasonCode);
 
   const remainingQuota = incrementQuota(payload.clientId, payload.context.timestamp);
   return {
     success: true,
-    data: result,
+    data: fallback,
     remainingQuota
   };
 }
-

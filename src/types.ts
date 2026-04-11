@@ -90,8 +90,17 @@ export type TianjiMeta = {
   hexagramName: string;
   knowledgeIds: string[];
   generatedAt: string;
-  provider: string;
+  provider: "openai" | "gemini" | "fallback";
   isFallback: boolean;
+  requestId: string;
+  fallbackReasonCode?:
+    | "auth"
+    | "network"
+    | "timeout"
+    | "http"
+    | "parse"
+    | "schema"
+    | "provider_unavailable";
 };
 
 export type TianjiData = {
@@ -144,8 +153,6 @@ export type GenerateErrorResponse = {
       | "INVALID_INPUT"
       | "PRESS_TOO_SHORT"
       | "RATE_LIMIT_EXCEEDED"
-      | "AI_SERVICE_ERROR"
-      | "AI_OUTPUT_INVALID"
       | "INTERNAL_ERROR";
     message: string;
     retryAfter?: string;
@@ -161,4 +168,3 @@ export type QuestionnaireAnswers = {
   emotion: "anxious" | "low" | "steady";
   healthTags: Array<"sedentary" | "late_sleep" | "irregular_diet" | "regular_exercise">;
 };
-

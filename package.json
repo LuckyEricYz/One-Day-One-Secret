@@ -5,9 +5,10 @@
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "dev": "tsx server/dev.ts",
+    "dev": "node --import tsx server/dev.ts",
     "build": "vite build",
     "preview": "vite preview",
+    "smoke": "node --import tsx server/smoke.ts",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "check": "pnpm typecheck && pnpm build"
   },
@@ -29,4 +30,3 @@
     "vite": "^7.1.3"
   }
 }
-

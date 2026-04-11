@@ -56,7 +56,8 @@ MVP 只使用浏览器本地存储，不做服务端持久化。
         "knowledgeIds": ["seasonal-003"],
         "generatedAt": "2026-04-11T13:30:00.000Z",
         "provider": "openai",
-        "isFallback": false
+        "isFallback": false,
+        "requestId": "9d7c3e1e-70b8-4604-b97f-cc5b2efdf6b8"
       }
     }
   }

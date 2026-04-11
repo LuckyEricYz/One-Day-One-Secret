@@ -52,8 +52,9 @@ export function buildFallbackResult(
       knowledgeIds: entries.map((entry) => entry.id),
       generatedAt: new Date().toISOString(),
       provider: "fallback",
-      isFallback: true
+      isFallback: true,
+      requestId: "",
+      fallbackReasonCode: "provider_unavailable"
     }
   };
 }
-

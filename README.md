@@ -62,10 +62,40 @@ MVP 输出结构：
     "knowledgeIds": ["seasonal-003", "sleep-004"],
     "generatedAt": "2026-04-11T13:30:00.000Z",
     "provider": "openai",
-    "isFallback": false
+    "isFallback": false,
+    "requestId": "9d7c3e1e-70b8-4604-b97f-cc5b2efdf6b8"
   }
 }
 ```
+
+当结果走 fallback 时，`meta.fallbackReasonCode` 会返回 `auth`、`network`、`timeout`、`http`、`parse`、`schema` 或 `provider_unavailable`，用于联调和日志定位。
+
+## 本地联调
+
+```bash
+cp .env.example .env.local
+# 编辑 .env.local 填入真实密钥
+
+pnpm dev
+pnpm smoke
+```
+
+- `.env.local` 提供默认值，命令行临时传入的环境变量会覆盖同名配置
+- `AI_PROVIDER` 支持 `auto`、`openai`、`gemini`、`fallback`
+- `OPENAI_BASE_URL` 默认是 `https://api.openai.com/v1`，也支持填 OpenAI 兼容代理地址
+- `pnpm smoke` 用固定请求体验证当前 provider 路径是否真的可用
+
+```bash
+AI_PROVIDER=fallback pnpm smoke
+AI_PROVIDER=openai pnpm smoke
+AI_PROVIDER=gemini pnpm smoke
+```
+
+## CI 与部署
+
+- GitHub Actions 负责 `pull_request` / `main` 上的 `pnpm check`
+- Vercel 使用 Git 集成自动生成 Preview 和 Production 部署
+- 当前如果只打通部署链路，Vercel 环境变量可先设置 `AI_PROVIDER=fallback`
 
 ## 文档入口
 
