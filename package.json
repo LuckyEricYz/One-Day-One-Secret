@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "smoke": "node --import tsx server/smoke.ts",
     "eval:generate": "node --import tsx server/evaluate-generation.ts",
+    "ship": "node scripts/ship-issue.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "check": "pnpm typecheck && pnpm build"
   },
