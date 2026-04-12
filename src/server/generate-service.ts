@@ -16,8 +16,8 @@ import {
 import { getCalendarContext } from "./calendar.js";
 import { buildFallbackResult } from "./fallback.js";
 import { getHexagramContext } from "./hexagrams.js";
-import { retrieveKnowledge } from "./knowledge.js";
-import { buildSystemPrompt, buildUserPrompt } from "./prompt.js";
+import { selectKnowledge } from "./knowledge.js";
+import { buildRepairUserPrompt, buildSystemPrompt, buildUserPrompt } from "./prompt.js";
 import {
   type ProviderAttemptLog,
   type ProviderConfig,
@@ -27,11 +27,16 @@ import {
   toAttemptLog,
   toProviderError
 } from "./providers.js";
+import {
+  type GenerationQualityReport,
+  evaluateGenerationQuality,
+  summarizeQualityIssues
+} from "./quality.js";
 import type { ServerEnv } from "./env.js";
 import { isValidRequestBody, normalizeGeneratedData } from "./validate.js";
 
 const runtimeQuota = new Map<string, { date: string; count: number }>();
-const SCHEMA_RETRY_LIMIT = 2;
+const GENERATION_ATTEMPT_LIMIT = 2;
 
 function errorResponse(
   code: GenerateErrorResponse["error"]["code"],
@@ -209,6 +214,28 @@ function logRejectedRequest(
   console.warn(`[generate:${requestId}] rejected code=${code} ${detail}`);
 }
 
+function createRepairReport(message: string): GenerationQualityReport {
+  return {
+    ok: false,
+    score: 0,
+    issues: [
+      {
+        code: "low_action_coverage",
+        severity: "error",
+        message
+      }
+    ],
+    metrics: {
+      seasonalGroundedAdviceCount: 0,
+      personalGroundedAdviceCount: 0,
+      groundedAdviceCount: 0,
+      templateHitCount: 0,
+      repeatedAdviceOpeners: [],
+      matchedKnowledgeIds: []
+    }
+  };
+}
+
 export async function generateTianji(
   body: unknown,
   env: ServerEnv = process.env,
@@ -252,15 +279,21 @@ export async function generateTianji(
     payload.context.timestamp,
     payload.touchEntropy ?? 0
   );
-  const knowledgeEntries = retrieveKnowledge({
+  const knowledgeSelection = selectKnowledge({
     solarTermKey: calendar.solarTermKey,
     constitution: payload.userProfile.constitution,
     mood: payload.userProfile.todayMood,
     healthTags: payload.userProfile.healthTags
   });
+  const knowledgeEntries = knowledgeSelection.entries;
   const knowledgeIds = knowledgeEntries.map((entry) => entry.id);
   const systemPrompt = buildSystemPrompt();
-  const userPrompt = buildUserPrompt(calendar, hexagram, payload.userProfile, knowledgeEntries);
+  const baseUserPrompt = buildUserPrompt(
+    calendar,
+    hexagram,
+    payload.userProfile,
+    knowledgeSelection
+  );
   const providerConfig = getProviderConfig(env);
   const providerOrder = getProviderOrder(env.AI_PROVIDER);
   const attempts: ProviderAttemptLog[] = [];
@@ -268,19 +301,22 @@ export async function generateTianji(
   console.info(
     `[generate:${requestId}] start ${summarizeConfiguredProviders(env, providerOrder)} mood=${
       payload.userProfile.todayMood
-    } pressDurationMs=${payload.pressDurationMs} location=${payload.context.location ? "yes" : "no"}`
+    } pressDurationMs=${payload.pressDurationMs} location=${
+      payload.context.location ? "yes" : "no"
+    } knowledge=${knowledgeIds.join(",") || "none"}`
   );
 
   for (const provider of providerOrder) {
-    let retryCount = 0;
+    let attemptCount = 0;
+    let currentUserPrompt = baseUserPrompt;
 
-    while (retryCount < SCHEMA_RETRY_LIMIT) {
+    while (attemptCount < GENERATION_ATTEMPT_LIMIT) {
       try {
         const providerResult = await callProvider(
           provider,
           providerConfig,
           systemPrompt,
-          userPrompt
+          currentUserPrompt
         );
         const normalized = normalizeGeneratedData(providerResult.payload);
 
@@ -293,11 +329,41 @@ export async function generateTianji(
             statusCode: providerResult.statusCode,
             providerRequestId: providerResult.providerRequestId,
             errorType: "schema",
-            errorSummary: "Model output did not match TianjiData."
+            errorSummary: "Model output failed normalization or overlap checks."
           });
 
-          retryCount += 1;
-          if (retryCount < SCHEMA_RETRY_LIMIT) {
+          attemptCount += 1;
+          if (attemptCount < GENERATION_ATTEMPT_LIMIT) {
+            currentUserPrompt = buildRepairUserPrompt(
+              baseUserPrompt,
+              providerResult.payload,
+              createRepairReport("输出没有通过结构、长度或字段去重校验。")
+            );
+            continue;
+          }
+          break;
+        }
+
+        const qualityReport = evaluateGenerationQuality(normalized, knowledgeSelection);
+        if (!qualityReport.ok) {
+          attempts.push({
+            provider: providerResult.provider,
+            model: providerResult.model,
+            latencyMs: providerResult.latencyMs,
+            status: "error",
+            statusCode: providerResult.statusCode,
+            providerRequestId: providerResult.providerRequestId,
+            errorType: "schema",
+            errorSummary: summarizeQualityIssues(qualityReport)
+          });
+
+          attemptCount += 1;
+          if (attemptCount < GENERATION_ATTEMPT_LIMIT) {
+            currentUserPrompt = buildRepairUserPrompt(
+              baseUserPrompt,
+              normalized,
+              qualityReport
+            );
             continue;
           }
           break;
@@ -320,6 +386,9 @@ export async function generateTianji(
           hexagram,
           knowledgeIds
         );
+        console.info(
+          `[generate:${requestId}] quality score=${qualityReport.score} grounded=${qualityReport.metrics.groundedAdviceCount}/3 templateHits=${qualityReport.metrics.templateHitCount}`
+        );
         logProviderOutcome(requestId, attempts, providerResult.provider);
 
         const remainingQuota = incrementQuota(payload.clientId, payload.context.timestamp);
@@ -334,9 +403,10 @@ export async function generateTianji(
 
         if (
           (providerError.errorType === "parse" || providerError.errorType === "schema") &&
-          retryCount + 1 < SCHEMA_RETRY_LIMIT
+          attemptCount + 1 < GENERATION_ATTEMPT_LIMIT
         ) {
-          retryCount += 1;
+          attemptCount += 1;
+          currentUserPrompt = baseUserPrompt;
           continue;
         }
 

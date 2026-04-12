@@ -1,10 +1,14 @@
-import { getCalendarContext } from "../src/server/calendar";
-import { loadDevEnv } from "../src/server/env";
-import { buildFallbackResult } from "../src/server/fallback";
-import { generateTianji } from "../src/server/generate-service";
-import { getHexagramContext } from "../src/server/hexagrams";
-import { retrieveKnowledge } from "../src/server/knowledge";
-import type { GenerateRequestPayload, UserProfile } from "../src/types";
+import { buildFallbackResult } from "../src/server/fallback.js";
+import { loadDevEnv } from "../src/server/env.js";
+import { generateTianji } from "../src/server/generate-service.js";
+import { selectKnowledge } from "../src/server/knowledge.js";
+import {
+  evaluateBatchVariation,
+  evaluateGenerationQuality
+} from "../src/server/quality.js";
+import { getCalendarContext } from "../src/server/calendar.js";
+import { getHexagramContext } from "../src/server/hexagrams.js";
+import type { GenerateRequestPayload, TianjiData, UserProfile } from "../src/types.js";
 
 type SampleCase = {
   id: string;
@@ -12,6 +16,8 @@ type SampleCase = {
   touchEntropy: number;
   userProfile: UserProfile;
 };
+
+const FIXED_EVAL_TIMESTAMP = Date.parse("2026-04-11T13:30:00+08:00");
 
 const SAMPLE_CASES: SampleCase[] = [
   {
@@ -21,6 +27,17 @@ const SAMPLE_CASES: SampleCase[] = [
     userProfile: {
       constitution: "balanced",
       healthTags: ["regular_exercise"],
+      todayMood: "calm",
+      tongueDiagnosis: null
+    }
+  },
+  {
+    id: "calm-irregular",
+    pressDurationMs: 3660,
+    touchEntropy: 35,
+    userProfile: {
+      constitution: "qi_deficiency",
+      healthTags: ["irregular_diet"],
       todayMood: "calm",
       tongueDiagnosis: null
     }
@@ -37,6 +54,17 @@ const SAMPLE_CASES: SampleCase[] = [
     }
   },
   {
+    id: "tired-late-sleep",
+    pressDurationMs: 4240,
+    touchEntropy: 50,
+    userProfile: {
+      constitution: "yang_deficiency",
+      healthTags: ["late_sleep"],
+      todayMood: "tired",
+      tongueDiagnosis: null
+    }
+  },
+  {
     id: "anxious-irregular",
     pressDurationMs: 4870,
     touchEntropy: 61,
@@ -44,6 +72,28 @@ const SAMPLE_CASES: SampleCase[] = [
       constitution: "qi_stagnation",
       healthTags: ["late_sleep", "irregular_diet"],
       todayMood: "anxious",
+      tongueDiagnosis: null
+    }
+  },
+  {
+    id: "anxious-balanced",
+    pressDurationMs: 4930,
+    touchEntropy: 63,
+    userProfile: {
+      constitution: "balanced",
+      healthTags: [],
+      todayMood: "anxious",
+      tongueDiagnosis: null
+    }
+  },
+  {
+    id: "sad-irregular",
+    pressDurationMs: 5160,
+    touchEntropy: 70,
+    userProfile: {
+      constitution: "yang_deficiency",
+      healthTags: ["irregular_diet"],
+      todayMood: "sad",
       tongueDiagnosis: null
     }
   },
@@ -57,75 +107,202 @@ const SAMPLE_CASES: SampleCase[] = [
       todayMood: "angry",
       tongueDiagnosis: null
     }
+  },
+  {
+    id: "happy-regular",
+    pressDurationMs: 5560,
+    touchEntropy: 79,
+    userProfile: {
+      constitution: "balanced",
+      healthTags: ["regular_exercise"],
+      todayMood: "happy",
+      tongueDiagnosis: null
+    }
+  },
+  {
+    id: "happy-sedentary",
+    pressDurationMs: 5790,
+    touchEntropy: 84,
+    userProfile: {
+      constitution: "phlegm_dampness",
+      healthTags: ["sedentary"],
+      todayMood: "happy",
+      tongueDiagnosis: null
+    }
   }
 ];
 
-function buildPayload(sample: SampleCase, timestamp: number): GenerateRequestPayload {
+function buildPayload(sample: SampleCase): GenerateRequestPayload {
   return {
     clientId: `eval-${sample.id}`,
     pressDurationMs: sample.pressDurationMs,
     touchEntropy: sample.touchEntropy,
     userProfile: sample.userProfile,
     context: {
-      timestamp,
+      timestamp: FIXED_EVAL_TIMESTAMP,
       timezone: "Asia/Shanghai"
     }
   };
 }
 
-function summarizeResult(result: {
-  mysticSaying: string;
-  mysticExplanation: string;
-  healthAdvice: readonly string[];
-  dos: readonly string[];
-  donts: readonly string[];
-  meta: { provider: string; isFallback: boolean; knowledgeIds: string[] };
-}) {
+function summarizeTianji(data: TianjiData) {
   return {
-    provider: result.meta.provider,
-    isFallback: result.meta.isFallback,
-    mysticSaying: result.mysticSaying,
-    mysticExplanation: result.mysticExplanation,
-    healthAdvice: result.healthAdvice,
-    dos: result.dos,
-    donts: result.donts,
-    knowledgeIds: result.meta.knowledgeIds
+    provider: data.meta.provider,
+    isFallback: data.meta.isFallback,
+    mysticSaying: data.mysticSaying,
+    mysticExplanation: data.mysticExplanation,
+    healthAdvice: data.healthAdvice,
+    dos: data.dos,
+    donts: data.donts,
+    knowledgeIds: data.meta.knowledgeIds
+  };
+}
+
+function summarizeSelection(selection: ReturnType<typeof selectKnowledge>) {
+  return {
+    seasonal: selection.seasonal?.id,
+    targeted: selection.targeted?.id,
+    recovery: selection.recovery?.id,
+    supplemental: selection.supplemental.map((entry) => entry.id),
+    targetedCategories: selection.diagnostics.targetedCategories,
+    recoveryCategories: selection.diagnostics.recoveryCategories,
+    selectedEntryIds: selection.diagnostics.selectedEntryIds
+  };
+}
+
+function summarizeQuality(
+  data: Omit<TianjiData, "meta">,
+  selection: ReturnType<typeof selectKnowledge>
+) {
+  const report = evaluateGenerationQuality(data, selection);
+
+  return {
+    ok: report.ok,
+    score: report.score,
+    issues: report.issues,
+    metrics: report.metrics
+  };
+}
+
+function summarizeAggregate(
+  results: Array<{
+    sample: string;
+    data: Omit<TianjiData, "meta">;
+    qualityScore: number;
+  }>
+) {
+  const averageScore =
+    results.length > 0
+      ? Number(
+          (results.reduce((sum, item) => sum + item.qualityScore, 0) / results.length).toFixed(1)
+        )
+      : 0;
+
+  return {
+    averageScore,
+    variation: evaluateBatchVariation(
+      results.map((item) => ({
+        sample: item.sample,
+        data: item.data
+      }))
+    )
   };
 }
 
 async function main() {
   const loadedEnv = loadDevEnv();
-  const timestamp = Date.now();
+  const calendar = getCalendarContext(FIXED_EVAL_TIMESTAMP);
+
+  const generatedBatch: Array<{
+    sample: string;
+    data: Omit<TianjiData, "meta">;
+    qualityScore: number;
+  }> = [];
+  const fallbackBatch: Array<{
+    sample: string;
+    data: Omit<TianjiData, "meta">;
+    qualityScore: number;
+  }> = [];
+
+  const cases = [];
 
   for (const sample of SAMPLE_CASES) {
-    const payload = buildPayload(sample, timestamp);
-    const generated = await generateTianji(payload, loadedEnv.env);
-    const calendar = getCalendarContext(payload.context.timestamp);
-    const hexagram = getHexagramContext(
-      payload.pressDurationMs,
-      payload.context.timestamp,
-      payload.touchEntropy ?? 0
-    );
-    const entries = retrieveKnowledge({
+    const payload = buildPayload(sample);
+    const selection = selectKnowledge({
       solarTermKey: calendar.solarTermKey,
       constitution: payload.userProfile.constitution,
       mood: payload.userProfile.todayMood,
       healthTags: payload.userProfile.healthTags
     });
-    const fallback = buildFallbackResult(calendar, hexagram, entries, payload.userProfile);
-
-    console.log(
-      JSON.stringify(
-        {
-          sample: sample.id,
-          generated: generated.success ? summarizeResult(generated.data) : generated,
-          fallback: summarizeResult(fallback)
-        },
-        null,
-        2
-      )
+    const generated = await generateTianji(payload, loadedEnv.env);
+    const hexagram = getHexagramContext(
+      payload.pressDurationMs,
+      payload.context.timestamp,
+      payload.touchEntropy ?? 0
     );
+    const fallback = buildFallbackResult(calendar, hexagram, selection.entries, payload.userProfile);
+
+    const fallbackQuality = summarizeQuality(fallback, selection);
+    fallbackBatch.push({
+      sample: sample.id,
+      data: fallback,
+      qualityScore: fallbackQuality.score
+    });
+
+    let generatedSummary: typeof generated | {
+      provider: TianjiData["meta"]["provider"];
+      isFallback: boolean;
+      mysticSaying: string;
+      mysticExplanation: string;
+      healthAdvice: [string, string, string];
+      dos: [string, string];
+      donts: [string, string];
+      knowledgeIds: string[];
+      quality: ReturnType<typeof summarizeQuality>;
+    };
+
+    if (generated.success) {
+      const quality = summarizeQuality(generated.data, selection);
+      generatedSummary = {
+        ...summarizeTianji(generated.data),
+        quality
+      };
+      generatedBatch.push({
+        sample: sample.id,
+        data: generated.data,
+        qualityScore: quality.score
+      });
+    } else {
+      generatedSummary = generated;
+    }
+
+    cases.push({
+      sample: sample.id,
+      knowledge: summarizeSelection(selection),
+      generated: generatedSummary,
+      fallback: {
+        ...summarizeTianji(fallback),
+        quality: fallbackQuality
+      }
+    });
   }
+
+  console.log(
+    JSON.stringify(
+      {
+        providerPreference: loadedEnv.env.AI_PROVIDER ?? "auto",
+        timestamp: new Date(FIXED_EVAL_TIMESTAMP).toISOString(),
+        sampleCount: SAMPLE_CASES.length,
+        cases,
+        aggregate: {
+          generated: summarizeAggregate(generatedBatch),
+          fallback: summarizeAggregate(fallbackBatch)
+        }
+      },
+      null,
+      2
+    )
+  );
 }
 
 main().catch((error) => {
