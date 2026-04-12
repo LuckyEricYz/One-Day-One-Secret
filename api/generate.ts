@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { generateTianji } from "../src/server/generate-service.js";
 
 type GenerateResult = Awaited<ReturnType<typeof generateTianji>>;
+type NodeRequest = IncomingMessage & { body?: unknown };
+type HandlerRequest = Request | NodeRequest;
 
 function getResponseStatus(result: GenerateResult): number {
   if (result.success) {
@@ -94,18 +97,103 @@ function summarizeError(error: unknown) {
   };
 }
 
-export default async function handler(request: Request): Promise<Response> {
-  // Support both standard Request (from Edge/modern Node) and fallback to method check
-  if (request.method === "GET") {
-    return new Response(
-      JSON.stringify({
+function isWebRequest(request: HandlerRequest): request is Request {
+  return typeof (request as Request).json === "function" && typeof (request as Request).headers?.get === "function";
+}
+
+function getMethod(request: HandlerRequest): string {
+  return request.method?.toUpperCase() ?? "GET";
+}
+
+function getHeader(request: HandlerRequest, name: string): string | undefined {
+  if (isWebRequest(request)) {
+    return request.headers.get(name) ?? undefined;
+  }
+
+  const value = request.headers[name.toLowerCase()];
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+
+  return value;
+}
+
+async function readNodeRequestText(request: NodeRequest): Promise<string> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of request) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function parseKnownNodeBody(body: unknown): unknown {
+  if (body == null) {
+    return null;
+  }
+
+  if (typeof body === "string") {
+    return body.length > 0 ? JSON.parse(body) : null;
+  }
+
+  if (Buffer.isBuffer(body)) {
+    const rawBody = body.toString("utf8");
+    return rawBody.length > 0 ? JSON.parse(rawBody) : null;
+  }
+
+  return body;
+}
+
+async function parseRequestBody(request: HandlerRequest): Promise<unknown> {
+  if (isWebRequest(request)) {
+    return request.json();
+  }
+
+  if ("body" in request && request.body !== undefined) {
+    return parseKnownNodeBody(request.body);
+  }
+
+  const rawBody = await readNodeRequestText(request);
+  return rawBody.length > 0 ? JSON.parse(rawBody) : null;
+}
+
+function createJsonResponse(payload: unknown, status: number): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "Content-Type": "application/json" }
+  });
+}
+
+function sendJsonResponse(
+  payload: unknown,
+  status: number,
+  response?: ServerResponse
+): Response | void {
+  if (!response) {
+    return createJsonResponse(payload, status);
+  }
+
+  response.statusCode = status;
+  response.setHeader("Content-Type", "application/json");
+  response.end(JSON.stringify(payload));
+}
+
+export default async function handler(
+  request: HandlerRequest,
+  response?: ServerResponse
+): Promise<Response | void> {
+  if (getMethod(request) !== "POST") {
+    return sendJsonResponse(
+      {
         success: false,
         error: {
           code: "INVALID_INPUT",
           message: "Only POST is allowed."
         }
-      }),
-      { status: 405, headers: { "Content-Type": "application/json" } }
+      },
+      405,
+      response
     );
   }
 
@@ -114,24 +202,25 @@ export default async function handler(request: Request): Promise<Response> {
   let body: unknown;
 
   try {
-    body = await request.json();
+    body = await parseRequestBody(request);
   } catch (error) {
     console.warn(
       `[api/generate:${requestId}] invalid-json ${JSON.stringify({
-        contentType: request.headers.get("content-type") ?? "unknown",
+        contentType: getHeader(request, "content-type") ?? "unknown",
         error: error instanceof Error ? error.message : String(error)
       })}`
     );
 
-    return new Response(
-      JSON.stringify({
+    return sendJsonResponse(
+      {
         success: false,
         error: {
           code: "INVALID_INPUT",
           message: "Request body must be valid JSON."
         }
-      }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
+      },
+      400,
+      response
     );
   }
 
@@ -165,10 +254,7 @@ export default async function handler(request: Request): Promise<Response> {
       })}`
     );
 
-    return new Response(JSON.stringify(result), {
-      status,
-      headers: { "Content-Type": "application/json" }
-    });
+    return sendJsonResponse(result, status, response);
   } catch (error) {
     const errorDetails = summarizeError(error);
     console.error(
@@ -180,15 +266,16 @@ export default async function handler(request: Request): Promise<Response> {
       })}`
     );
 
-    return new Response(
-      JSON.stringify({
+    return sendJsonResponse(
+      {
         success: false,
         error: {
           code: "INTERNAL_ERROR",
           message: `生成服务发生未处理异常: ${errorDetails.message || "未知错误"}`
         }
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      },
+      500,
+      response
     );
   }
 }
