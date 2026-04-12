@@ -16,7 +16,7 @@
 
 - 疾病诊断、治疗建议、药物或保健品推荐
 - 舌诊拍照识别
-- RAG 向量检索
+- 默认开启的 RAG 向量检索
 - 跨设备同步和账号体系
 
 ## 当前 MVP
@@ -34,6 +34,8 @@ MVP 统一决策如下：
 - AI 默认平台：OpenAI
 - 备用平台：Gemini
 - 知识来源：本地 JSON 条目
+- 检索默认模式：`rules`
+- 可选实验模式：`RAG_RETRIEVAL_MODE=hybrid`
 - 每日额度：5 次
 - 重置时间：`Asia/Shanghai` 自然日 `00:00`
 - 本地存储键：`tianji_client_id`、`tianji_profile`、`tianji_history`、`tianji_quota`
@@ -82,10 +84,14 @@ pnpm smoke
 
 - `.env.local` 提供默认值，命令行临时传入的环境变量会覆盖同名配置
 - `AI_PROVIDER` 支持 `auto`、`openai`、`kimi`、`gemini`、`fallback`
+- `RAG_RETRIEVAL_MODE` 支持 `rules`、`hybrid`，默认使用 `rules`
 - OpenAI 路径使用官方 SDK + Responses API + structured outputs
+- `pnpm build:knowledge-index` 会按顺序尝试 `embedding -> chat signature -> mock hash`
+- `OPENAI_SIGNATURE_MODEL` 默认跟随 `OPENAI_MODEL`，只在 embedding 不可用时用于生成语义签名索引
 - Kimi 路径只在显式 `AI_PROVIDER=kimi` 时启用，走 OpenAI SDK 的 `chat.completions.create`
 - `AI_PROVIDER=auto` 默认只走 OpenAI，失败后直接回退本地 fallback，不再自动尝试 Gemini
 - `OPENAI_BASE_URL` 默认是 `https://api.openai.com/v1`，也支持填兼容 Responses API 的 OpenAI 代理地址
+- `OPENAI_EMBEDDING_MODEL` 默认是 `text-embedding-3-small`
 - `KIMI_BASE_URL` 默认是 `https://api.kimi.com/coding/v1`
 - `pnpm smoke` 用固定请求体验证当前 provider 路径是否真的可用
 
@@ -94,6 +100,10 @@ AI_PROVIDER=fallback pnpm smoke
 AI_PROVIDER=openai pnpm smoke
 AI_PROVIDER=kimi pnpm smoke
 AI_PROVIDER=gemini pnpm smoke
+
+pnpm build:knowledge-index
+RAG_RETRIEVAL_MODE=hybrid AI_PROVIDER=fallback pnpm smoke
+pnpm eval:generate -- --mode=compare
 ```
 
 ## CI 与部署
@@ -112,7 +122,8 @@ AI_PROVIDER=gemini pnpm smoke
 
 ## 目录现状
 
-当前仓库以文档为主，代码结构仍处于规划阶段。文档中的“计划目录”表示后续实现目标，不代表仓库已经具备对应实现。
+当前仓库已包含可运行的前后端 MVP、Serverless 生成接口、质量评测脚本，以及可选的实验性 Hybrid RAG 检索链路。
+如未构建 embedding 索引，`RAG_RETRIEVAL_MODE=hybrid` 会自动降级回 `rules`。
 
 ## 文档维护规则
 

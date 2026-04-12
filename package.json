@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "smoke": "node --import tsx server/smoke.ts",
+    "build:knowledge-index": "node --import tsx server/build-knowledge-index.ts",
     "eval:generate": "node --import tsx server/evaluate-generation.ts",
     "test:quality": "node --import tsx server/test-quality.ts",
     "ship": "node scripts/ship-issue.mjs",

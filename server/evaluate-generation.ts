@@ -2,10 +2,17 @@ import { buildFallbackResult } from "../src/server/fallback.js";
 import { loadDevEnv } from "../src/server/env.js";
 import { generateTianji } from "../src/server/generate-service.js";
 import { selectKnowledge } from "../src/server/knowledge.js";
+import { KNOWLEDGE_EMBEDDING_INDEX } from "../src/server/knowledge-index.generated.js";
 import {
   evaluateBatchVariation,
   evaluateGenerationQuality
 } from "../src/server/quality.js";
+import {
+  buildKnowledgeQueryText,
+  buildQueryVector,
+  isKnowledgeEmbeddingIndexUsable,
+  type KnowledgeRetrievalMode
+} from "../src/server/rag.js";
 import { getCalendarContext } from "../src/server/calendar.js";
 import { getHexagramContext } from "../src/server/hexagrams.js";
 import type { GenerateRequestPayload, TianjiData, UserProfile } from "../src/types.js";
@@ -16,6 +23,8 @@ type SampleCase = {
   touchEntropy: number;
   userProfile: UserProfile;
 };
+
+type EvaluationMode = KnowledgeRetrievalMode | "compare";
 
 const FIXED_EVAL_TIMESTAMP = Date.parse("2026-04-11T13:30:00+08:00");
 
@@ -132,6 +141,18 @@ const SAMPLE_CASES: SampleCase[] = [
   }
 ];
 
+function parseEvaluationMode(argv: string[]): EvaluationMode {
+  const rawMode = argv
+    .find((item) => item.startsWith("--mode="))
+    ?.slice("--mode=".length);
+
+  if (rawMode === "rules" || rawMode === "hybrid" || rawMode === "compare") {
+    return rawMode;
+  }
+
+  return "compare";
+}
+
 function buildPayload(sample: SampleCase): GenerateRequestPayload {
   return {
     clientId: `eval-${sample.id}`,
@@ -166,6 +187,12 @@ function summarizeSelection(selection: ReturnType<typeof selectKnowledge>) {
     supplemental: selection.supplemental.map((entry) => entry.id),
     targetedCategories: selection.diagnostics.targetedCategories,
     recoveryCategories: selection.diagnostics.recoveryCategories,
+    requestedRetrievalMode: selection.diagnostics.requestedRetrievalMode,
+    effectiveRetrievalMode: selection.diagnostics.effectiveRetrievalMode,
+    retrievalFallbackReason: selection.diagnostics.retrievalFallbackReason,
+    vectorEligibleCount: selection.diagnostics.vectorEligibleCount,
+    vectorCandidateIds: selection.diagnostics.vectorCandidateIds,
+    vectorSelectedIds: selection.diagnostics.vectorSelectedIds,
     selectedEntryIds: selection.diagnostics.selectedEntryIds
   };
 }
@@ -209,10 +236,63 @@ function summarizeAggregate(
   };
 }
 
-async function main() {
-  const loadedEnv = loadDevEnv();
-  const calendar = getCalendarContext(FIXED_EVAL_TIMESTAMP);
+async function selectKnowledgeForMode(
+  sample: SampleCase,
+  calendar: ReturnType<typeof getCalendarContext>,
+  env: Record<string, string | undefined>,
+  mode: KnowledgeRetrievalMode
+) {
+  const context = {
+    solarTermKey: calendar.solarTermKey,
+    constitution: sample.userProfile.constitution,
+    mood: sample.userProfile.todayMood,
+    healthTags: sample.userProfile.healthTags
+  };
 
+  if (mode === "rules") {
+    return {
+      selection: selectKnowledge(context, { retrievalMode: "rules" })
+    };
+  }
+
+  const queryText = buildKnowledgeQueryText(context);
+  let queryEmbedding: number[] | undefined;
+  let embeddingError: string | undefined;
+
+  if (isKnowledgeEmbeddingIndexUsable(KNOWLEDGE_EMBEDDING_INDEX)) {
+    try {
+      const queryVector = await buildQueryVector(
+        context,
+        queryText,
+        env,
+        KNOWLEDGE_EMBEDDING_INDEX
+      );
+      queryEmbedding = queryVector.vector;
+    } catch (error) {
+      embeddingError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  return {
+    selection: selectKnowledge(context, {
+      retrievalMode: "hybrid",
+      embeddingIndex: KNOWLEDGE_EMBEDDING_INDEX,
+      queryEmbedding,
+      queryText
+    }),
+    embeddingError
+  };
+}
+
+async function evaluateMode(
+  loadedEnv: ReturnType<typeof loadDevEnv>,
+  mode: KnowledgeRetrievalMode
+) {
+  const envForMode = {
+    ...loadedEnv.env,
+    RAG_RETRIEVAL_MODE: mode
+  };
+  const calendar = getCalendarContext(FIXED_EVAL_TIMESTAMP);
   const generatedBatch: Array<{
     sample: string;
     data: Omit<TianjiData, "meta">;
@@ -223,18 +303,17 @@ async function main() {
     data: Omit<TianjiData, "meta">;
     qualityScore: number;
   }> = [];
-
   const cases = [];
 
   for (const sample of SAMPLE_CASES) {
     const payload = buildPayload(sample);
-    const selection = selectKnowledge({
-      solarTermKey: calendar.solarTermKey,
-      constitution: payload.userProfile.constitution,
-      mood: payload.userProfile.todayMood,
-      healthTags: payload.userProfile.healthTags
-    });
-    const generated = await generateTianji(payload, loadedEnv.env);
+    const { selection, embeddingError } = await selectKnowledgeForMode(
+      sample,
+      calendar,
+      envForMode,
+      mode
+    );
+    const generated = await generateTianji(payload, envForMode);
     const hexagram = getHexagramContext(
       payload.pressDurationMs,
       payload.context.timestamp,
@@ -249,17 +328,19 @@ async function main() {
       qualityScore: fallbackQuality.score
     });
 
-    let generatedSummary: typeof generated | {
-      provider: TianjiData["meta"]["provider"];
-      isFallback: boolean;
-      mysticSaying: string;
-      mysticExplanation: string;
-      healthAdvice: [string, string, string];
-      dos: [string, string];
-      donts: [string, string];
-      knowledgeIds: string[];
-      quality: ReturnType<typeof summarizeQuality>;
-    };
+    let generatedSummary:
+      | typeof generated
+      | {
+          provider: TianjiData["meta"]["provider"];
+          isFallback: boolean;
+          mysticSaying: string;
+          mysticExplanation: string;
+          healthAdvice: [string, string, string];
+          dos: [string, string];
+          donts: [string, string];
+          knowledgeIds: string[];
+          quality: ReturnType<typeof summarizeQuality>;
+        };
 
     if (generated.success) {
       const quality = summarizeQuality(generated.data, selection);
@@ -279,6 +360,7 @@ async function main() {
     cases.push({
       sample: sample.id,
       knowledge: summarizeSelection(selection),
+      retrievalEmbeddingError: embeddingError,
       generated: generatedSummary,
       fallback: {
         ...summarizeTianji(fallback),
@@ -287,17 +369,34 @@ async function main() {
     });
   }
 
+  return {
+    requestedMode: mode,
+    indexUsable: isKnowledgeEmbeddingIndexUsable(KNOWLEDGE_EMBEDDING_INDEX),
+    cases,
+    aggregate: {
+      generated: summarizeAggregate(generatedBatch),
+      fallback: summarizeAggregate(fallbackBatch)
+    }
+  };
+}
+
+async function main() {
+  const loadedEnv = loadDevEnv();
+  const evaluationMode = parseEvaluationMode(process.argv.slice(2));
+  const modes: KnowledgeRetrievalMode[] =
+    evaluationMode === "compare" ? ["rules", "hybrid"] : [evaluationMode];
+  const results = await Promise.all(
+    modes.map(async (mode) => [mode, await evaluateMode(loadedEnv, mode)] as const)
+  );
+
   console.log(
     JSON.stringify(
       {
         providerPreference: loadedEnv.env.AI_PROVIDER ?? "auto",
+        evaluationMode,
         timestamp: new Date(FIXED_EVAL_TIMESTAMP).toISOString(),
         sampleCount: SAMPLE_CASES.length,
-        cases,
-        aggregate: {
-          generated: summarizeAggregate(generatedBatch),
-          fallback: summarizeAggregate(fallbackBatch)
-        }
+        results: Object.fromEntries(results)
       },
       null,
       2

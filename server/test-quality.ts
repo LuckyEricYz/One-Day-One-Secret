@@ -2,12 +2,44 @@ import assert from "node:assert/strict";
 
 import { getCalendarContext } from "../src/server/calendar.js";
 import { selectKnowledge } from "../src/server/knowledge.js";
+import type { KnowledgeEmbeddingIndex } from "../src/server/rag.js";
 import {
   evaluateBatchVariation,
   evaluateGenerationQuality
 } from "../src/server/quality.js";
 
 const TEST_TIMESTAMP = Date.parse("2026-04-11T13:30:00+08:00");
+
+const FIXTURE_INDEX: KnowledgeEmbeddingIndex = {
+  version: 2,
+  strategy: "chat_signature",
+  model: "fixture",
+  generatedAt: "2026-04-12T00:00:00.000Z",
+  itemCount: 4,
+  dimension: 3,
+  items: [
+    {
+      id: "exercise-001",
+      searchText: "fixture",
+      embedding: [1, 0, 0]
+    },
+    {
+      id: "sleep-003",
+      searchText: "fixture",
+      embedding: [0.95, 0.05, 0]
+    },
+    {
+      id: "diet-004",
+      searchText: "fixture",
+      embedding: [0.92, 0.08, 0]
+    },
+    {
+      id: "emotion-001",
+      searchText: "fixture",
+      embedding: [0.7, 0.3, 0]
+    }
+  ]
+};
 
 function runKnowledgeSelectionAssertions() {
   const calendar = getCalendarContext(TEST_TIMESTAMP);
@@ -34,6 +66,68 @@ function runKnowledgeSelectionAssertions() {
     selection.targeted.id,
     selection.recovery.id,
     "targeted and recovery entries should be different"
+  );
+}
+
+function runHybridSelectionAssertions() {
+  const calendar = getCalendarContext(TEST_TIMESTAMP);
+  const selection = selectKnowledge(
+    {
+      solarTermKey: calendar.solarTermKey,
+      constitution: "qi_deficiency",
+      mood: "tired",
+      healthTags: ["late_sleep", "sedentary"]
+    },
+    {
+      retrievalMode: "hybrid",
+      embeddingIndex: FIXTURE_INDEX,
+      queryEmbedding: [1, 0, 0],
+      queryText: "清明 疲惫 久坐 熬夜"
+    }
+  );
+
+  assert.equal(
+    selection.diagnostics.effectiveRetrievalMode,
+    "hybrid",
+    "hybrid selection should remain enabled when vectors are available"
+  );
+  assert.equal(
+    selection.diagnostics.vectorCandidateIds.includes("exercise-001"),
+    true,
+    "hybrid selection should include vector-ranked candidates"
+  );
+  const boostedItem = selection.diagnostics.scored.find((item) => item.id === "diet-004");
+  assert.ok(boostedItem, "hybrid diagnostics should include boosted entries");
+  assert.equal(
+    Boolean(boostedItem && boostedItem.score > boostedItem.ruleScore),
+    true,
+    "hybrid selection should raise the fused score of vector-matched entries"
+  );
+}
+
+function runHybridFallbackAssertions() {
+  const calendar = getCalendarContext(TEST_TIMESTAMP);
+  const selection = selectKnowledge(
+    {
+      solarTermKey: calendar.solarTermKey,
+      constitution: "qi_deficiency",
+      mood: "tired",
+      healthTags: ["late_sleep", "sedentary"]
+    },
+    {
+      retrievalMode: "hybrid"
+    }
+  );
+
+  assert.equal(
+    selection.diagnostics.effectiveRetrievalMode,
+    "rules",
+    "hybrid selection should degrade to rules when no index is available"
+  );
+  assert.equal(
+    selection.diagnostics.retrievalFallbackReason,
+    "index_unavailable",
+    "fallback reason should explain why hybrid retrieval was disabled"
   );
 }
 
@@ -135,6 +229,8 @@ function runVariationAssertions() {
 
 function main() {
   runKnowledgeSelectionAssertions();
+  runHybridSelectionAssertions();
+  runHybridFallbackAssertions();
   runQualityGateAssertions();
   runVariationAssertions();
   console.log("quality assertions passed");

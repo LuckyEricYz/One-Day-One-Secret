@@ -1,13 +1,27 @@
-import type { Constitution, HealthTag, KnowledgeEntry, Mood } from "../types.js";
+import type { KnowledgeEntry } from "../types.js";
 import { KNOWLEDGE_ENTRIES } from "./knowledge-data.js";
+import {
+  cosineSimilarity,
+  type KnowledgeEmbeddingIndex,
+  type KnowledgeRetrievalContext,
+  type KnowledgeRetrievalMode,
+  isKnowledgeEmbeddingIndexUsable
+} from "./rag.js";
 
 type KnowledgeCategory = KnowledgeEntry["category"];
 
-export type KnowledgeContext = {
-  solarTermKey: string;
-  constitution: Constitution;
-  mood: Mood;
-  healthTags: HealthTag[];
+export type KnowledgeContext = KnowledgeRetrievalContext;
+
+type RetrievalFallbackReason =
+  | "index_unavailable"
+  | "query_embedding_missing"
+  | "query_embedding_dimension_mismatch";
+
+export type KnowledgeSelectionOptions = {
+  retrievalMode?: KnowledgeRetrievalMode;
+  embeddingIndex?: KnowledgeEmbeddingIndex;
+  queryEmbedding?: number[];
+  queryText?: string;
 };
 
 type KnowledgeSignals = {
@@ -19,12 +33,22 @@ type KnowledgeSignals = {
 
 type ScoredKnowledgeEntry = {
   entry: KnowledgeEntry;
+  ruleScore: number;
   score: number;
+  vectorScore: number;
+  vectorBoost: number;
   signals: KnowledgeSignals;
 };
 
 export type KnowledgeSelectionDiagnostics = {
   requestedSolarTermKey: string;
+  requestedRetrievalMode: KnowledgeRetrievalMode;
+  effectiveRetrievalMode: KnowledgeRetrievalMode;
+  retrievalFallbackReason?: RetrievalFallbackReason;
+  vectorQueryText?: string;
+  vectorEligibleCount: number;
+  vectorCandidateIds: string[];
+  vectorSelectedIds: string[];
   seasonalMatchFound: boolean;
   targetedCategories: KnowledgeCategory[];
   recoveryCategories: KnowledgeCategory[];
@@ -32,7 +56,10 @@ export type KnowledgeSelectionDiagnostics = {
   scored: Array<{
     id: string;
     category: KnowledgeCategory;
+    ruleScore: number;
     score: number;
+    vectorScore: number;
+    vectorBoost: number;
     seasonalMatch: boolean;
     constitutionMatch: boolean;
     moodMatch: boolean;
@@ -118,6 +145,10 @@ function compareScoredEntries(left: ScoredKnowledgeEntry, right: ScoredKnowledge
     return right.score - left.score;
   }
 
+  if (right.ruleScore !== left.ruleScore) {
+    return right.ruleScore - left.ruleScore;
+  }
+
   if (right.entry.priority !== left.entry.priority) {
     return right.entry.priority - left.entry.priority;
   }
@@ -125,15 +156,141 @@ function compareScoredEntries(left: ScoredKnowledgeEntry, right: ScoredKnowledge
   return left.entry.id.localeCompare(right.entry.id);
 }
 
-function scoreKnowledgeEntries(context: KnowledgeContext): ScoredKnowledgeEntry[] {
-  return KNOWLEDGE_ENTRIES.map((entry) => {
+type VectorMatch = {
+  similarity: number;
+  boost: number;
+};
+
+type VectorRankingResult = {
+  matches: Map<string, VectorMatch>;
+  candidateIds: string[];
+  eligibleCount: number;
+  fallbackReason?: RetrievalFallbackReason;
+};
+
+function getVectorRanking(
+  entries: KnowledgeEntry[],
+  index: KnowledgeEmbeddingIndex | undefined,
+  queryEmbedding: number[] | undefined
+): VectorRankingResult {
+  if (!index || !isKnowledgeEmbeddingIndexUsable(index, entries)) {
+    return {
+      matches: new Map(),
+      candidateIds: [],
+      eligibleCount: 0,
+      fallbackReason: "index_unavailable"
+    };
+  }
+
+  if (!queryEmbedding || queryEmbedding.length === 0) {
+    return {
+      matches: new Map(),
+      candidateIds: [],
+      eligibleCount: index.items.length,
+      fallbackReason: "query_embedding_missing"
+    };
+  }
+
+  const scoredItems = index.items
+    .filter((item) => item.embedding.length === queryEmbedding.length)
+    .map((item) => ({
+      id: item.id,
+      similarity: cosineSimilarity(queryEmbedding, item.embedding)
+    }))
+    .filter((item) => Number.isFinite(item.similarity))
+    .sort((left, right) => right.similarity - left.similarity);
+
+  if (scoredItems.length === 0) {
+    return {
+      matches: new Map(),
+      candidateIds: [],
+      eligibleCount: 0,
+      fallbackReason: "query_embedding_dimension_mismatch"
+    };
+  }
+
+  const highestSimilarity = scoredItems[0]?.similarity ?? 0;
+  const lowestSimilarity = scoredItems[scoredItems.length - 1]?.similarity ?? 0;
+  const similarityRange = highestSimilarity - lowestSimilarity;
+  const matches = new Map<string, VectorMatch>();
+
+  scoredItems.forEach((item, indexRank) => {
+    const normalizedSimilarity =
+      similarityRange > 0
+        ? (item.similarity - lowestSimilarity) / similarityRange
+        : item.similarity > 0
+          ? 1
+          : 0;
+    const rankBoost = indexRank < 3 ? 3 - indexRank : 0;
+    const boost = Math.max(0, normalizedSimilarity * 8 + rankBoost);
+
+    matches.set(item.id, {
+      similarity: item.similarity,
+      boost
+    });
+  });
+
+  return {
+    matches,
+    candidateIds: scoredItems
+      .filter((item) => item.similarity > 0)
+      .slice(0, 8)
+      .map((item) => item.id),
+    eligibleCount: scoredItems.length
+  };
+}
+
+function scoreKnowledgeEntries(
+  context: KnowledgeContext,
+  options: KnowledgeSelectionOptions
+): {
+  scored: ScoredKnowledgeEntry[];
+  effectiveRetrievalMode: KnowledgeRetrievalMode;
+  retrievalFallbackReason?: RetrievalFallbackReason;
+  vectorEligibleCount: number;
+  vectorCandidateIds: string[];
+} {
+  const requestedRetrievalMode = options.retrievalMode ?? "rules";
+  const vectorRanking =
+    requestedRetrievalMode === "hybrid"
+      ? getVectorRanking(KNOWLEDGE_ENTRIES, options.embeddingIndex, options.queryEmbedding)
+      : {
+          matches: new Map<string, VectorMatch>(),
+          candidateIds: [],
+          eligibleCount: 0
+        };
+
+  const effectiveRetrievalMode =
+    requestedRetrievalMode === "hybrid" && !vectorRanking.fallbackReason ? "hybrid" : "rules";
+
+  const scored = KNOWLEDGE_ENTRIES.map((entry) => {
     const signals = buildSignals(entry, context);
+    const ruleScore = getEntryScore(entry, signals);
+    const vectorMatch =
+      requestedRetrievalMode === "hybrid" && effectiveRetrievalMode === "hybrid"
+        ? vectorRanking.matches.get(entry.id)
+        : undefined;
+
     return {
       entry,
       signals,
-      score: getEntryScore(entry, signals)
+      ruleScore,
+      vectorScore: vectorMatch?.similarity ?? 0,
+      vectorBoost: vectorMatch?.boost ?? 0,
+      score: ruleScore + (vectorMatch?.boost ?? 0)
     };
   }).sort(compareScoredEntries);
+
+  return {
+    scored,
+    effectiveRetrievalMode,
+    retrievalFallbackReason:
+      requestedRetrievalMode === "hybrid" && effectiveRetrievalMode === "rules"
+        ? vectorRanking.fallbackReason
+        : undefined,
+    vectorEligibleCount: vectorRanking.eligibleCount,
+    vectorCandidateIds: vectorRanking.candidateIds
+  };
 }
 
 function getCategoryBias(category: KnowledgeCategory, preferred: KnowledgeCategory[]): number {
@@ -214,7 +371,10 @@ function pickStructuredEntry(
 
   const relevant = ranked.find(
     ({ item }) =>
-      item.signals.moodMatch || item.signals.healthTagHits > 0 || item.signals.constitutionMatch
+      item.signals.moodMatch ||
+      item.signals.healthTagHits > 0 ||
+      item.signals.constitutionMatch ||
+      item.vectorBoost > 0
   );
 
   return (relevant ?? ranked[0])?.item.entry;
@@ -278,8 +438,18 @@ function pickSupplementalEntries(
   return picked;
 }
 
-export function selectKnowledge(context: KnowledgeContext): KnowledgeSelection {
-  const scored = scoreKnowledgeEntries(context);
+export function selectKnowledge(
+  context: KnowledgeContext,
+  options: KnowledgeSelectionOptions = {}
+): KnowledgeSelection {
+  const requestedRetrievalMode = options.retrievalMode ?? "rules";
+  const {
+    scored,
+    effectiveRetrievalMode,
+    retrievalFallbackReason,
+    vectorEligibleCount,
+    vectorCandidateIds
+  } = scoreKnowledgeEntries(context, options);
   const targetedCategories = getTargetCategories(context);
   const recoveryCategories = getRecoveryCategories(context);
 
@@ -315,6 +485,12 @@ export function selectKnowledge(context: KnowledgeContext): KnowledgeSelection {
   const entries = [seasonal, targeted, recovery, ...supplemental].filter(
     (entry): entry is KnowledgeEntry => Boolean(entry)
   );
+  const vectorSelectedIds = entries
+    .filter((entry) => {
+      const selectedItem = scored.find((item) => item.entry.id === entry.id);
+      return Boolean(selectedItem && selectedItem.vectorBoost > 0);
+    })
+    .map((entry) => entry.id);
 
   return {
     seasonal,
@@ -324,6 +500,13 @@ export function selectKnowledge(context: KnowledgeContext): KnowledgeSelection {
     entries,
     diagnostics: {
       requestedSolarTermKey: context.solarTermKey,
+      requestedRetrievalMode,
+      effectiveRetrievalMode,
+      retrievalFallbackReason,
+      vectorQueryText: options.queryText,
+      vectorEligibleCount,
+      vectorCandidateIds,
+      vectorSelectedIds,
       seasonalMatchFound: Boolean(
         seasonalCandidate?.entry.category === "seasonal" && seasonalCandidate.signals.seasonalMatch
       ),
@@ -333,7 +516,10 @@ export function selectKnowledge(context: KnowledgeContext): KnowledgeSelection {
       scored: scored.map((item) => ({
         id: item.entry.id,
         category: item.entry.category,
+        ruleScore: Number(item.ruleScore.toFixed(2)),
         score: Number(item.score.toFixed(2)),
+        vectorScore: Number(item.vectorScore.toFixed(4)),
+        vectorBoost: Number(item.vectorBoost.toFixed(2)),
         seasonalMatch: item.signals.seasonalMatch,
         constitutionMatch: item.signals.constitutionMatch,
         moodMatch: item.signals.moodMatch,
@@ -343,6 +529,9 @@ export function selectKnowledge(context: KnowledgeContext): KnowledgeSelection {
   };
 }
 
-export function retrieveKnowledge(context: KnowledgeContext): KnowledgeEntry[] {
-  return selectKnowledge(context).entries;
+export function retrieveKnowledge(
+  context: KnowledgeContext,
+  options: KnowledgeSelectionOptions = {}
+): KnowledgeEntry[] {
+  return selectKnowledge(context, options).entries;
 }

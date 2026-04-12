@@ -17,6 +17,7 @@ import { getCalendarContext } from "./calendar.js";
 import { buildFallbackResult } from "./fallback.js";
 import { getHexagramContext } from "./hexagrams.js";
 import { selectKnowledge } from "./knowledge.js";
+import { KNOWLEDGE_EMBEDDING_INDEX } from "./knowledge-index.generated.js";
 import { buildRepairUserPrompt, buildSystemPrompt, buildUserPrompt } from "./prompt.js";
 import {
   type ProviderAttemptLog,
@@ -32,6 +33,12 @@ import {
   evaluateGenerationQuality,
   summarizeQualityIssues
 } from "./quality.js";
+import {
+  buildKnowledgeQueryText,
+  buildQueryVector,
+  getRetrievalMode,
+  isKnowledgeEmbeddingIndexUsable
+} from "./rag.js";
 import type { ServerEnv } from "./env.js";
 import { isValidRequestBody, normalizeGeneratedData } from "./validate.js";
 
@@ -206,6 +213,51 @@ function summarizeConfiguredProviders(env: ServerEnv, providerOrder: ProviderNam
   } configured=${availableProviders}`;
 }
 
+async function prepareKnowledgeSelection(
+  payload: GenerateRequestPayload,
+  calendar: ReturnType<typeof getCalendarContext>,
+  env: ServerEnv,
+  requestId: string
+) {
+  const retrievalMode = getRetrievalMode(env);
+  const retrievalContext = {
+    solarTermKey: calendar.solarTermKey,
+    constitution: payload.userProfile.constitution,
+    mood: payload.userProfile.todayMood,
+    healthTags: payload.userProfile.healthTags
+  };
+  const queryText =
+    retrievalMode === "hybrid" ? buildKnowledgeQueryText(retrievalContext) : undefined;
+  const canUseEmbeddingIndex =
+    retrievalMode === "hybrid" && isKnowledgeEmbeddingIndexUsable(KNOWLEDGE_EMBEDDING_INDEX);
+  let queryEmbedding: number[] | undefined;
+
+  if (canUseEmbeddingIndex && queryText) {
+    try {
+      const queryVector = await buildQueryVector(
+        retrievalContext,
+        queryText,
+        env,
+        KNOWLEDGE_EMBEDDING_INDEX
+      );
+      queryEmbedding = queryVector.vector;
+    } catch (error) {
+      console.warn(
+        `[generate:${requestId}] retrieval-embedding-failed ${JSON.stringify({
+          message: error instanceof Error ? error.message : String(error)
+        })}`
+      );
+    }
+  }
+
+  return selectKnowledge(retrievalContext, {
+    retrievalMode,
+    embeddingIndex: KNOWLEDGE_EMBEDDING_INDEX,
+    queryEmbedding,
+    queryText
+  });
+}
+
 function logRejectedRequest(
   requestId: string,
   code: GenerateErrorResponse["error"]["code"],
@@ -279,14 +331,13 @@ export async function generateTianji(
     payload.context.timestamp,
     payload.touchEntropy ?? 0
   );
-  const knowledgeSelection = selectKnowledge({
-    solarTermKey: calendar.solarTermKey,
-    constitution: payload.userProfile.constitution,
-    mood: payload.userProfile.todayMood,
-    healthTags: payload.userProfile.healthTags
-  });
+  const knowledgeSelection = await prepareKnowledgeSelection(payload, calendar, env, requestId);
   const knowledgeEntries = knowledgeSelection.entries;
   const knowledgeIds = knowledgeEntries.map((entry) => entry.id);
+  const ruleCandidateIds = knowledgeSelection.diagnostics.scored
+    .filter((item) => item.ruleScore > 0)
+    .slice(0, 5)
+    .map((item) => item.id);
   const systemPrompt = buildSystemPrompt();
   const baseUserPrompt = buildUserPrompt(
     calendar,
@@ -303,7 +354,15 @@ export async function generateTianji(
       payload.userProfile.todayMood
     } pressDurationMs=${payload.pressDurationMs} location=${
       payload.context.location ? "yes" : "no"
-    } knowledge=${knowledgeIds.join(",") || "none"}`
+    } retrieval=${knowledgeSelection.diagnostics.effectiveRetrievalMode} requestedRetrieval=${
+      knowledgeSelection.diagnostics.requestedRetrievalMode
+    } retrievalFallback=${knowledgeSelection.diagnostics.retrievalFallbackReason ?? "none"} knowledge=${
+      knowledgeIds.join(",") || "none"
+    } ruleCandidates=${
+      ruleCandidateIds.join(",") || "none"
+    } vectorCandidates=${
+      knowledgeSelection.diagnostics.vectorCandidateIds.join(",") || "none"
+    }`
   );
 
   for (const provider of providerOrder) {

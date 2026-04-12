@@ -1,55 +1,51 @@
-# RAG 升级规划
+# RAG 架构说明
 
-> 当前 MVP 不使用向量检索。本文件只记录未来升级条件，避免把规划误写成现行实现。
+> 当前仓库已支持实验性的 Hybrid RAG，但默认检索模式仍是 `rules`。
 
 ## 1. 当前状态
 
-MVP 检索方式固定为：
+默认链路仍然是：
 
 - 本地 JSON 条目
 - 基于节气、体质、情绪、生活标签的规则打分
 - 取 Top 5 注入 Prompt
 
-这已经满足当前产品目标，不额外引入 embedding、向量库或召回评估系统。
-
-## 2. 何时考虑 RAG
-
-只有满足以下条件，才启动 RAG 评估：
-
-1. 本地知识条目超过 150 条
-2. 规则检索开始频繁出现“相关但不够准”的问题
-3. 已准备好人工标注的评估集
-4. 有能力维护向量更新与质量监控
-
-## 3. 升级目标
-
-RAG 的目标不是“更高级”，而是解决两类问题：
-
-- 更好地理解组合语境，例如“清明 + 疲惫 + 久坐”
-- 降低纯手工标签检索的维护成本
-
-## 4. 预期架构
-
-升级后推荐保留混合检索，而不是完全替换规则检索：
+可选实验链路为：
 
 ```text
 规则检索
-  -> 保障节气与体质的显式命中
-向量检索
-  -> 补充语义相关条目
+  -> 保留节气和显式标签命中
+本地 embedding 索引
+  -> 补充语义候选
 融合排序
-  -> 取 Top 5 注入 Prompt
+  -> 继续输出 seasonal / targeted / recovery / supplemental
 ```
 
-## 5. 进入实施前必须补齐的内容
+## 2. 当前实现边界
 
-- 稳定的知识条目 schema
-- 至少 20 组人工评估样本
-- 命中率和排序效果的验收指标
-- 成本预算和回滚方案
+- 向量索引文件保存在仓库内，由 `pnpm build:knowledge-index` 离线生成
+- 索引构建优先走 OpenAI embedding；若通道不支持，则退到 chat signature；再失败才退到本地 mock hash
+- Runtime query 向量会跟随索引策略自动选择对应实现
+- 不接入 pgvector、外部向量库或独立检索服务
+- `POST /api/generate` 的请求/响应结构保持不变
 
-## 6. 当前明确不做
+## 3. 启用方式
 
-- 当前版本不接入 pgvector
-- 当前版本不写 embedding 脚本
-- 当前版本不把模型查询文本暴露成独立接口
+```bash
+pnpm build:knowledge-index
+RAG_RETRIEVAL_MODE=hybrid pnpm dev
+RAG_RETRIEVAL_MODE=hybrid AI_PROVIDER=fallback pnpm smoke
+pnpm eval:generate -- --mode=compare
+```
+
+## 4. 降级规则
+
+- 缺少或未构建 embedding 索引时，自动回退到 `rules`
+- Query embedding 获取失败时，自动回退到 `rules`
+- 索引版本或向量维度不可用时，自动回退到 `rules`
+
+## 5. 近期不做
+
+- 当前不接入 pgvector
+- 当前不做在线知识管理后台
+- 当前不把 query embedding 暴露成独立接口

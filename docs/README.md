@@ -21,7 +21,8 @@
 | 文档 | 用途 | 状态 |
 |:-----|:-----|:-----|
 | [phase-3/data-storage.md](./phase-3/data-storage.md) | 本地存储现状与未来同步升级方向 | 🧭 规划中 |
-| [phase-3/rag-architecture.md](./phase-3/rag-architecture.md) | 从本地 JSON 到 RAG 的升级条件 | 🧭 规划中 |
+| [phase-3/rag-architecture.md](./phase-3/rag-architecture.md) | 实验性 Hybrid RAG 的启用方式与边界 | 🛠 实验版 |
+| [phase-3/rag-experiment-log.md](./phase-3/rag-experiment-log.md) | 本轮 Hybrid RAG 的操作路径、实验步骤与结论 | 📝 记录中 |
 | [phase-3/tongue-diagnosis.md](./phase-3/tongue-diagnosis.md) | 舌象输入升级路线 | 🧭 规划中 |
 | [phase-3/privacy-policy.md](./phase-3/privacy-policy.md) | MVP 隐私承诺与后续能力边界 | ✅ 已收敛 |
 
