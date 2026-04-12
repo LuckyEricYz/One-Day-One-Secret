@@ -57,6 +57,9 @@ const motionVariants = {
 
 export default function App() {
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playPromiseRef = useRef<Promise<void> | null>(null);
+  
   const [ready, setReady] = useState(false);
   const [clientId, setClientId] = useState("");
   const [profile, setProfile] = useState<StoredProfile | null>(null);
@@ -70,6 +73,45 @@ export default function App() {
   const [isSavingImage, setIsSavingImage] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [quotaVersion, setQuotaVersion] = useState(0);
+  const [isUserPressing, setIsUserPressing] = useState(false);
+
+  // 初始化音频对象
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      audioRef.current = new Audio("/gua-music.mp3");
+      audioRef.current.loop = true;
+    }
+  }, []);
+
+  // 全局音频控制逻辑：支持跨视图平滑停顿
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const shouldPlay = isUserPressing || isGenerating;
+
+    if (shouldPlay) {
+      if (audio.paused) {
+        audio.currentTime = 0;
+        playPromiseRef.current = audio.play();
+      }
+    } else if (view === "result") {
+      // 生成成功后，延迟 1.5 秒停止，让用户在看到卡片时依然有音乐余韵
+      const timer = setTimeout(() => {
+        const p = playPromiseRef.current;
+        if (p) {
+          p.then(() => audio.pause()).catch(() => audio.pause());
+        } else {
+          audio.pause();
+        }
+      }, 1500);
+      return () => clearTimeout(timer);
+    } else {
+      // 其他视图（如中途取消）直接停止
+      audio.pause();
+      audio.currentTime = 0;
+    }
+  }, [isUserPressing, isGenerating, view]);
 
   useEffect(() => {
     const nextClientId = ensureClientId();
@@ -283,6 +325,7 @@ export default function App() {
                   remainingQuota={remainingQuota}
                   locationGranted={Boolean(location)}
                   errorMessage={errorMessage}
+                  onPressingChange={setIsUserPressing}
                   onBack={() => setView("mood")}
                   onLongPressComplete={handleGenerate}
                 />
@@ -616,6 +659,7 @@ function PressToGenerate(props: {
   remainingQuota: number;
   locationGranted: boolean;
   errorMessage: string;
+  onPressingChange: (pressing: boolean) => void;
   onBack: () => void;
   onLongPressComplete: (pressDurationMs: number, touchEntropy: number) => void;
 }) {
@@ -632,6 +676,7 @@ function PressToGenerate(props: {
           <ParticleSphere
             disabled={props.remainingQuota <= 0 || props.isGenerating}
             loading={props.isGenerating}
+            onPressingChange={props.onPressingChange}
             onComplete={props.onLongPressComplete}
           />
         </div>
