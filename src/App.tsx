@@ -27,7 +27,10 @@ import type {
   TianjiData
 } from "./types";
 
-type View = "questionnaire" | "mood" | "press" | "result";
+import ParticleSphere from "./components/ParticleSphere";
+import { TianjiCard } from "./components/TianjiCard";
+
+type View = "intro" | "questionnaire" | "mood" | "press" | "result";
 
 type QuestionnaireOption<T extends string> = {
   label: string;
@@ -76,7 +79,7 @@ export default function App() {
     setClientId(nextClientId);
     setProfile(nextProfile);
     setHistory(nextHistory);
-    setView(nextProfile ? "mood" : "questionnaire");
+    setView(nextProfile ? "mood" : "intro");
     setReady(true);
   }, []);
 
@@ -223,7 +226,7 @@ export default function App() {
     setErrorMessage("");
     setIsHistoryOpen(false);
     setQuotaVersion((value) => value + 1);
-    setView("questionnaire");
+    setView("intro");
   }
 
   if (!ready) {
@@ -245,6 +248,12 @@ export default function App() {
 
         <div className="flex-1">
           <AnimatePresence mode="wait">
+            {view === "intro" ? (
+              <ScreenFrame key="intro">
+                <IntroFlow onStart={() => setView("questionnaire")} />
+              </ScreenFrame>
+            ) : null}
+
             {view === "questionnaire" ? (
               <ScreenFrame key="questionnaire">
                 <QuestionnaireFlow onComplete={handleQuestionnaireComplete} />
@@ -282,7 +291,7 @@ export default function App() {
 
             {view === "result" && result ? (
               <ScreenFrame key="result">
-                <ResultView
+                <TianjiCard
                   ref={cardRef}
                   mood={selectedMood}
                   result={result}
@@ -344,6 +353,29 @@ function Header(props: {
   );
 }
 
+function IntroFlow(props: { onStart: () => void }) {
+  return (
+    <div className="flex h-full flex-col justify-center items-center text-center">
+      <div className="mb-12">
+        <h2 className="text-4xl font-bold text-[var(--color-text)] [font-family:'LXGW_WenKai','STKaiti',serif] tracking-widest mb-4">
+          入局
+        </h2>
+        <p className="text-sm text-[var(--color-muted)] px-8 leading-relaxed">
+          天地一统，万物有灵。<br/>在测算今日天机之前，你需要先为卡牌注入一丝你的本因。
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={props.onStart}
+        className="rounded-full bg-[var(--color-accent)] px-8 py-4 text-sm font-bold text-[#f7f3ec] shadow-[0_8px_20px_rgba(176,58,46,0.3)] transition hover:-translate-y-1 active:translate-y-0 tracking-wide"
+      >
+        注入你的生理能量，开启避坑指南
+      </button>
+    </div>
+  );
+}
+
 function ScreenFrame({ children }: { children: ReactNode }) {
   return (
     <motion.div
@@ -362,58 +394,47 @@ function ScreenFrame({ children }: { children: ReactNode }) {
 function QuestionnaireFlow(props: { onComplete: (answers: QuestionnaireAnswers) => void }) {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<QuestionnaireAnswers>({
-    sleep: "mixed",
-    temperature: "cool",
-    digestion: "stable",
-    emotion: "steady",
+    bloodPressure: "steady",
+    sleepDuration: "normal",
+    tongueCoating: "pale_thin",
     healthTags: []
   });
 
   const steps = [
     {
-      key: "sleep",
-      title: "你的睡眠质量如何？",
-      subtitle: "只需要选一个最接近你的状态。",
+      key: "bloodPressure",
+      title: "你近日的血压感受？",
+      subtitle: "这会影响气血运转的判断。",
       options: [
-        { label: "经常失眠浅眠", value: "poor" },
-        { label: "偶尔不好", value: "mixed" },
-        { label: "一般都很好", value: "good" }
-      ] satisfies QuestionnaireOption<QuestionnaireAnswers["sleep"]>[]
+        { label: "近期偏高或头晕起伏大", value: "high" },
+        { label: "近期偏低或容易眼黑", value: "low" },
+        { label: "大多平稳，无明显不适", value: "steady" }
+      ] satisfies QuestionnaireOption<QuestionnaireAnswers["bloodPressure"]>[]
     },
     {
-      key: "temperature",
-      title: "你的手脚温度？",
-      subtitle: "这会影响基础画像的节奏判断。",
+      key: "sleepDuration",
+      title: "你近期的睡眠时长？",
+      subtitle: "睡眠乃养精蓄锐之本。",
       options: [
-        { label: "经常冰凉", value: "cold" },
-        { label: "有时偏凉", value: "cool" },
-        { label: "一般温暖", value: "warm" }
-      ] satisfies QuestionnaireOption<QuestionnaireAnswers["temperature"]>[]
+        { label: "不足 6 小时", value: "short" },
+        { label: "常规 7 - 8 小时", value: "normal" },
+        { label: "常常超过 9 小时", value: "long" }
+      ] satisfies QuestionnaireOption<QuestionnaireAnswers["sleepDuration"]>[]
     },
     {
-      key: "digestion",
-      title: "你的消化状况？",
-      subtitle: "不追求准确诊断，只取日常体感。",
+      key: "tongueCoating",
+      title: "你今晨的舌苔颜色？",
+      subtitle: "舌为心之苗，反映微观状态。",
       options: [
-        { label: "容易胀气不适", value: "bloating" },
-        { label: "容易腹泻", value: "loose" },
-        { label: "很少有问题", value: "stable" }
-      ] satisfies QuestionnaireOption<QuestionnaireAnswers["digestion"]>[]
-    },
-    {
-      key: "emotion",
-      title: "你的情绪状态？",
-      subtitle: "按最近一段时间的常见感觉来选。",
-      options: [
-        { label: "容易焦虑紧张", value: "anxious" },
-        { label: "容易压抑低落", value: "low" },
-        { label: "基本平稳", value: "steady" }
-      ] satisfies QuestionnaireOption<QuestionnaireAnswers["emotion"]>[]
+        { label: "发白且苔厚", value: "white_thick" },
+        { label: "偏红且少苔", value: "red_thin" },
+        { label: "淡红且薄白（正常）", value: "pale_thin" }
+      ] satisfies QuestionnaireOption<QuestionnaireAnswers["tongueCoating"]>[]
     },
     {
       key: "healthTags",
-      title: "你最近更接近哪些习惯？",
-      subtitle: "这一题可多选，也可以直接跳过。",
+      title: "补充一下日常偏好",
+      subtitle: "可多选，没有可直接跳过。",
       options: [
         { label: "长期久坐", value: "sedentary" },
         { label: "经常熬夜", value: "late_sleep" },
@@ -429,7 +450,7 @@ function QuestionnaireFlow(props: { onComplete: (answers: QuestionnaireAnswers) 
   return (
     <div className="flex h-full flex-col justify-between">
       <div>
-        <div className="rounded-3xl border border-[var(--color-border)] bg-[rgba(255,255,255,0.04)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[rgba(255,255,255,0.6)] p-6 shadow-sm backdrop-blur-sm">
           <p className="text-xs uppercase tracking-[0.3em] text-[var(--color-muted)]">
             初次问卷 {step + 1}/{steps.length}
           </p>
@@ -513,15 +534,15 @@ function QuestionnaireFlow(props: { onComplete: (answers: QuestionnaireAnswers) 
           <button
             type="button"
             onClick={() => props.onComplete(answers)}
-            className="rounded-full bg-[var(--color-accent)] px-5 py-3 text-sm font-medium text-[#1a1308]"
+            className="rounded-full bg-[var(--color-accent)] px-5 py-3 text-sm font-bold text-[#f7f3ec] shadow-md"
           >
-            完成进入
+            结印生成
           </button>
         ) : (
           <button
             type="button"
             onClick={() => setStep((value) => Math.min(steps.length - 1, value + 1))}
-            className="rounded-full bg-[var(--color-accent)] px-5 py-3 text-sm font-medium text-[#1a1308]"
+            className="rounded-full bg-[var(--color-accent)] px-5 py-3 text-sm font-bold text-[#f7f3ec] shadow-sm"
           >
             下一题
           </button>
@@ -539,7 +560,7 @@ function MoodSelection(props: {
 }) {
   return (
     <div className="flex h-full flex-col justify-between">
-      <div className="rounded-3xl border border-[var(--color-border)] bg-[rgba(255,255,255,0.04)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[rgba(255,255,255,0.6)] p-6 shadow-sm backdrop-blur-sm">
         <p className="text-xs uppercase tracking-[0.32em] text-[var(--color-muted)]">今日状态</p>
         <h2 className="mt-4 text-3xl font-semibold text-[var(--color-text)]">此刻你的状态如何？</h2>
         <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
@@ -563,10 +584,10 @@ function MoodSelection(props: {
                 key={mood}
                 type="button"
                 onClick={() => props.onSelectMood(mood)}
-                className={`rounded-3xl border p-4 text-left transition ${
+                  className={`rounded-xl border p-4 text-left transition ${
                   selected
-                    ? "border-[var(--color-accent)] bg-[rgba(199,168,106,0.12)]"
-                    : "border-[var(--color-border)] bg-white/4 hover:border-white/20"
+                    ? "border-[var(--color-accent)] bg-[rgba(176,58,46,0.08)] shadow-sm"
+                    : "border-[var(--color-border)] bg-transparent hover:border-[var(--color-accent)]/40 hover:bg-white/40"
                 }`}
               >
                 <div className="text-3xl">{moodEmoji[mood]}</div>
@@ -600,15 +621,15 @@ function PressToGenerate(props: {
 }) {
   return (
     <div className="flex h-full flex-col items-center justify-between">
-      <div className="w-full rounded-3xl border border-[var(--color-border)] bg-[rgba(255,255,255,0.04)] p-6 text-center shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+      <div className="w-full rounded-xl border border-[var(--color-border)] bg-[rgba(255,255,255,0.6)] p-6 text-center shadow-sm backdrop-blur-sm">
         <p className="text-xs uppercase tracking-[0.32em] text-[var(--color-muted)]">今日起卦</p>
         <h2 className="mt-4 text-3xl font-semibold text-[var(--color-text)]">{moodEmoji[props.mood]} {moodLabels[props.mood]}</h2>
         <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
           长按至少 2 秒，让节气、状态和当下节奏一起落成今天的建议卡。
         </p>
 
-        <div className="mt-8 flex justify-center">
-          <LongPressButton
+        <div className="mt-8 flex justify-center py-6">
+          <ParticleSphere
             disabled={props.remainingQuota <= 0 || props.isGenerating}
             loading={props.isGenerating}
             onComplete={props.onLongPressComplete}
@@ -639,137 +660,6 @@ function PressToGenerate(props: {
   );
 }
 
-const ResultView = forwardRef<HTMLDivElement, {
-  mood: Mood;
-  result: TianjiData;
-  isSavingImage: boolean;
-  onSaveImage: () => void;
-  onRegenerate: () => void;
-  onOpenHistory: () => void;
-}>(function ResultView(
-  props: {
-    mood: Mood;
-    result: TianjiData;
-    isSavingImage: boolean;
-    onSaveImage: () => void;
-    onRegenerate: () => void;
-    onOpenHistory: () => void;
-  },
-  ref
-) {
-  return (
-    <div className="flex h-full flex-col">
-      <motion.div
-        ref={ref}
-        className="rounded-[28px] border border-[var(--color-border)] bg-[linear-gradient(180deg,rgba(23,23,27,0.96),rgba(18,18,24,0.92))] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.28)]"
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.32em] text-[var(--color-muted)]">
-              {props.result.meta.solarTermName}
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold text-[var(--color-accent)]">
-              {props.result.meta.hexagramName}
-            </h2>
-          </div>
-
-          <div className="text-right">
-            <p className="text-3xl">{moodEmoji[props.mood]}</p>
-            {props.result.meta.isFallback ? (
-              <p className="mt-2 text-xs text-[var(--color-muted)]">基础 fallback</p>
-            ) : (
-              <p className="mt-2 text-xs text-[var(--color-muted)]">{props.result.meta.provider}</p>
-            )}
-          </div>
-        </div>
-
-        <blockquote className="mt-8 text-3xl leading-[1.55] text-[var(--color-text)] [font-family:'LXGW_WenKai','STKaiti',serif]">
-          「{props.result.mysticSaying}」
-        </blockquote>
-
-        <p className="mt-5 text-sm leading-7 text-[var(--color-muted)]">
-          {props.result.mysticExplanation}
-        </p>
-
-        <div className="mt-6 h-px bg-[var(--color-border)]" />
-
-        <section className="mt-6">
-          <p className="text-xs uppercase tracking-[0.32em] text-[var(--color-muted)]">今日建议</p>
-          <ul className="mt-4 space-y-3">
-            {props.result.healthAdvice.map((item) => (
-              <li
-                key={item}
-                className="flex items-start gap-3 rounded-2xl border border-[var(--color-border)] bg-white/4 px-4 py-3 text-sm leading-6 text-[var(--color-text)]"
-              >
-                <span className="mt-1 h-2 w-2 rounded-full bg-[var(--color-accent)]" />
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section className="mt-6 grid grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-[rgba(109,154,107,0.3)] bg-[rgba(109,154,107,0.08)] p-4">
-            <p className="text-xs uppercase tracking-[0.28em] text-[var(--color-positive)]">宜</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {props.result.dos.map((item) => (
-                <Badge key={item} tone="positive">
-                  {item}
-                </Badge>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-[rgba(198,106,85,0.3)] bg-[rgba(198,106,85,0.08)] p-4">
-            <p className="text-xs uppercase tracking-[0.28em] text-[var(--color-negative)]">忌</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {props.result.donts.map((item) => (
-                <Badge key={item} tone="negative">
-                  {item}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <div className="mt-6 rounded-2xl border border-[var(--color-border)] bg-white/4 px-4 py-4 text-xs leading-6 text-[var(--color-muted)]">
-          <p>{props.result.meta.ganZhiSummary}</p>
-          <p>{formatDateTime(props.result.meta.generatedAt)}</p>
-        </div>
-      </motion.div>
-
-      <div className="mt-6 flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={props.onSaveImage}
-          disabled={props.isSavingImage}
-          className="rounded-full bg-[var(--color-accent)] px-5 py-3 text-sm font-medium text-[#1a1308] disabled:opacity-60"
-        >
-          {props.isSavingImage ? "正在导出…" : "保存长图"}
-        </button>
-
-        <button
-          type="button"
-          onClick={props.onRegenerate}
-          className="rounded-full border border-[var(--color-border)] px-5 py-3 text-sm text-[var(--color-text)]"
-        >
-          再来一次
-        </button>
-
-        <button
-          type="button"
-          onClick={props.onOpenHistory}
-          className="rounded-full border border-[var(--color-border)] px-5 py-3 text-sm text-[var(--color-text)]"
-        >
-          查看历史
-        </button>
-      </div>
-    </div>
-  );
-});
 
 function HistoryDrawer(props: {
   history: HistoryEntry[];
@@ -792,7 +682,7 @@ function HistoryDrawer(props: {
             onClick={props.onClose}
           />
           <motion.aside
-            className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[76dvh] w-full max-w-md rounded-t-[28px] border border-[var(--color-border)] bg-[#121218] px-4 pb-[max(20px,env(safe-area-inset-bottom))] pt-4 shadow-[0_-24px_80px_rgba(0,0,0,0.35)]"
+            className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[76dvh] w-full max-w-md rounded-t-[20px] border border-[var(--color-border)] bg-[var(--color-bg)] px-4 pb-[max(20px,env(safe-area-inset-bottom))] pt-4 shadow-[0_-24px_80px_rgba(47,42,36,0.25)]"
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
@@ -815,7 +705,7 @@ function HistoryDrawer(props: {
 
             <div className="mt-5 space-y-3 overflow-y-auto pb-4">
               {props.history.length === 0 ? (
-                <div className="rounded-2xl border border-[var(--color-border)] bg-white/4 p-4 text-sm text-[var(--color-muted)]">
+                <div className="rounded-xl border border-[var(--color-border)] bg-white/50 p-4 text-sm text-[var(--color-muted)]">
                   还没有历史记录。生成第一张天机卡后会出现在这里。
                 </div>
               ) : (
@@ -824,11 +714,11 @@ function HistoryDrawer(props: {
                     key={entry.id}
                     type="button"
                     onClick={() => props.onSelect(entry)}
-                    className="w-full rounded-2xl border border-[var(--color-border)] bg-white/4 p-4 text-left transition hover:border-white/20"
+                    className="w-full rounded-xl border border-[var(--color-border)] bg-white/50 p-4 text-left transition hover:border-[var(--color-accent)]/50"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-sm text-[var(--color-accent)]">{entry.result.meta.hexagramName}</p>
+                        <p className="text-sm font-bold text-[var(--color-accent)]">{entry.result.meta.hexagramName}</p>
                         <p className="mt-1 text-base text-[var(--color-text)]">{entry.result.mysticSaying}</p>
                       </div>
                       <div className="text-right">
@@ -862,100 +752,6 @@ function HistoryDrawer(props: {
   );
 }
 
-function LongPressButton(props: {
-  disabled: boolean;
-  loading: boolean;
-  onComplete: (duration: number, entropy: number) => void;
-}) {
-  const [progress, setProgress] = useState(0);
-  const [pressing, setPressing] = useState(false);
-  const startRef = useRef(0);
-  const frameRef = useRef<number | null>(null);
-  const entropyRef = useRef(0);
-
-  function stopAnimation() {
-    if (frameRef.current !== null) {
-      cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-    }
-  }
-
-  function animate() {
-    const elapsed = performance.now() - startRef.current;
-    setProgress(clamp(elapsed / 2000, 0, 1));
-    frameRef.current = requestAnimationFrame(animate);
-  }
-
-  function finish(event: React.PointerEvent<HTMLButtonElement>) {
-    event.currentTarget.releasePointerCapture(event.pointerId);
-    stopAnimation();
-    setPressing(false);
-
-    const elapsed = Math.round(clamp(performance.now() - startRef.current, 0, 30000));
-    const completed = elapsed >= 2000;
-    setProgress(0);
-
-    if (completed) {
-      props.onComplete(elapsed, entropyRef.current);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      disabled={props.disabled}
-      className={`relative flex h-44 w-44 items-center justify-center rounded-full border border-[var(--color-border)] bg-[radial-gradient(circle_at_center,rgba(199,168,106,0.18),rgba(255,255,255,0.02))] text-center transition ${
-        props.disabled ? "cursor-not-allowed opacity-55" : "active:scale-[0.98]"
-      }`}
-      onPointerDown={(event) => {
-        if (props.disabled) {
-          return;
-        }
-
-        event.currentTarget.setPointerCapture(event.pointerId);
-        entropyRef.current = Math.round(((event.clientX + 7) * 13 + (event.clientY + 11) * 7) % 997);
-        startRef.current = performance.now();
-        setPressing(true);
-        setProgress(0);
-        stopAnimation();
-        frameRef.current = requestAnimationFrame(animate);
-      }}
-      onPointerUp={finish}
-      onPointerCancel={() => {
-        stopAnimation();
-        setPressing(false);
-        setProgress(0);
-      }}
-    >
-      <svg className="absolute inset-0 -rotate-90" viewBox="0 0 176 176">
-        <circle cx="88" cy="88" r="78" stroke="rgba(255,255,255,0.08)" strokeWidth="8" fill="transparent" />
-        <circle
-          cx="88"
-          cy="88"
-          r="78"
-          stroke="var(--color-accent)"
-          strokeWidth="8"
-          strokeLinecap="round"
-          fill="transparent"
-          strokeDasharray={490}
-          strokeDashoffset={490 - 490 * progress}
-        />
-      </svg>
-
-      <div className="relative px-6">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/6 text-2xl">
-          ☯
-        </div>
-        <p className="mt-4 text-base text-[var(--color-text)]">
-          {props.loading ? "推演中…" : pressing ? "保持住" : "长按感应天机"}
-        </p>
-        <p className="mt-2 text-xs text-[var(--color-muted)]">
-          {props.loading ? "请等待结果卡显现" : "至少按住 2 秒"}
-        </p>
-      </div>
-    </button>
-  );
-}
 
 function Badge(props: {
   children: ReactNode;

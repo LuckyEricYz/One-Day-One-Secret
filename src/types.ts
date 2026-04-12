@@ -162,9 +162,8 @@ export type GenerateErrorResponse = {
 export type GenerateResponse = GenerateSuccessResponse | GenerateErrorResponse;
 
 export type QuestionnaireAnswers = {
-  sleep: "poor" | "mixed" | "good";
-  temperature: "cold" | "cool" | "warm";
-  digestion: "bloating" | "loose" | "stable";
-  emotion: "anxious" | "low" | "steady";
+  bloodPressure: "high" | "low" | "steady";
+  sleepDuration: "short" | "normal" | "long";
+  tongueCoating: "white_thick" | "red_thin" | "pale_thin";
   healthTags: Array<"sedentary" | "late_sleep" | "irregular_diet" | "regular_exercise">;
 };

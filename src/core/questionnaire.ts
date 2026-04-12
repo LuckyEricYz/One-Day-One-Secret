@@ -20,24 +20,20 @@ function addScore(board: ConstitutionScoreBoard, constitution: Constitution, sco
 export function resolveConstitution(answers: QuestionnaireAnswers): Constitution {
   const board = createEmptyBoard();
 
-  if (answers.sleep === "poor") addScore(board, "yin_deficiency", 2);
-  if (answers.sleep === "mixed") addScore(board, "qi_deficiency", 1);
-  if (answers.sleep === "good") addScore(board, "balanced", 2);
+  if (answers.bloodPressure === "high") addScore(board, "yin_deficiency", 2);
+  if (answers.bloodPressure === "low") addScore(board, "qi_deficiency", 2);
+  if (answers.bloodPressure === "steady") addScore(board, "balanced", 2);
 
-  if (answers.temperature === "cold") addScore(board, "yang_deficiency", 2);
-  if (answers.temperature === "cool") addScore(board, "qi_deficiency", 1);
-  if (answers.temperature === "warm") addScore(board, "balanced", 2);
-
-  if (answers.digestion === "bloating") addScore(board, "qi_stagnation", 2);
-  if (answers.digestion === "loose") addScore(board, "phlegm_dampness", 2);
-  if (answers.digestion === "stable") addScore(board, "balanced", 2);
-
-  if (answers.emotion === "anxious") addScore(board, "qi_stagnation", 2);
-  if (answers.emotion === "low") {
-    addScore(board, "qi_stagnation", 1);
+  if (answers.sleepDuration === "short") {
+    addScore(board, "yin_deficiency", 1);
     addScore(board, "qi_deficiency", 1);
   }
-  if (answers.emotion === "steady") addScore(board, "balanced", 2);
+  if (answers.sleepDuration === "long") addScore(board, "phlegm_dampness", 1);
+  if (answers.sleepDuration === "normal") addScore(board, "balanced", 2);
+
+  if (answers.tongueCoating === "white_thick") addScore(board, "phlegm_dampness", 2);
+  if (answers.tongueCoating === "red_thin") addScore(board, "yin_deficiency", 2);
+  if (answers.tongueCoating === "pale_thin") addScore(board, "qi_deficiency", 1);
 
   const priority: Constitution[] = [
     "qi_stagnation",
