@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { getCalendarContext } from "../src/server/calendar.js";
 import { selectKnowledge } from "../src/server/knowledge.js";
 import type { KnowledgeEmbeddingIndex } from "../src/server/rag.js";
+import { defaultDailySupplement } from "../src/shared/supplement.js";
 import {
   evaluateBatchVariation,
   evaluateGenerationQuality
@@ -47,7 +48,8 @@ function runKnowledgeSelectionAssertions() {
     solarTermKey: calendar.solarTermKey,
     constitution: "qi_deficiency",
     mood: "tired",
-    healthTags: ["late_sleep", "sedentary"]
+    healthTags: ["late_sleep", "sedentary"],
+    dailySupplement: defaultDailySupplement
   });
 
   assert.ok(selection.seasonal, "selection should include a seasonal entry");
@@ -76,7 +78,8 @@ function runHybridSelectionAssertions() {
       solarTermKey: calendar.solarTermKey,
       constitution: "qi_deficiency",
       mood: "tired",
-      healthTags: ["late_sleep", "sedentary"]
+      healthTags: ["late_sleep", "sedentary"],
+      dailySupplement: defaultDailySupplement
     },
     {
       retrievalMode: "hybrid",
@@ -112,7 +115,8 @@ function runHybridFallbackAssertions() {
       solarTermKey: calendar.solarTermKey,
       constitution: "qi_deficiency",
       mood: "tired",
-      healthTags: ["late_sleep", "sedentary"]
+      healthTags: ["late_sleep", "sedentary"],
+      dailySupplement: defaultDailySupplement
     },
     {
       retrievalMode: "hybrid"
@@ -137,7 +141,8 @@ function runQualityGateAssertions() {
     solarTermKey: calendar.solarTermKey,
     constitution: "qi_deficiency",
     mood: "tired",
-    healthTags: ["late_sleep", "sedentary"]
+    healthTags: ["late_sleep", "sedentary"],
+    dailySupplement: defaultDailySupplement
   });
 
   const groundedResult = {

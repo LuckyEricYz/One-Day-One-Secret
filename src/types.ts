@@ -29,16 +29,43 @@ export const TONGUE_DIAGNOSIS_OPTIONS = [
   "option_c"
 ] as const;
 
+export const HEAD_SENSE_OPTIONS = [
+  "clear",
+  "slightly_full",
+  "rising"
+] as const;
+
+export const SLEEP_DURATION_OPTIONS = [
+  "short",
+  "medium",
+  "long"
+] as const;
+
+export const TONGUE_COATING_OPTIONS = [
+  "thin_white",
+  "thick_white",
+  "slightly_yellow"
+] as const;
+
 export type Constitution = (typeof CONSTITUTIONS)[number];
 export type HealthTag = (typeof HEALTH_TAGS)[number];
 export type Mood = (typeof MOODS)[number];
 export type TongueDiagnosis = (typeof TONGUE_DIAGNOSIS_OPTIONS)[number] | null;
+export type HeadSense = (typeof HEAD_SENSE_OPTIONS)[number];
+export type SleepDuration = (typeof SLEEP_DURATION_OPTIONS)[number];
+export type TongueCoating = (typeof TONGUE_COATING_OPTIONS)[number];
 
 export type UserProfile = {
   constitution: Constitution;
   healthTags: HealthTag[];
   todayMood: Mood;
   tongueDiagnosis: TongueDiagnosis;
+};
+
+export type DailySupplement = {
+  headSense: HeadSense;
+  sleepDuration: SleepDuration;
+  tongueCoating: TongueCoating;
 };
 
 export type StoredProfile = {
@@ -116,6 +143,7 @@ export type HistoryEntry = {
   id: string;
   date: string;
   mood: Mood;
+  supplementAnswers?: DailySupplement;
   result: TianjiData;
 };
 
@@ -130,6 +158,7 @@ export type GenerateRequestPayload = {
   pressDurationMs: number;
   touchEntropy?: number;
   userProfile: UserProfile;
+  dailySupplement: DailySupplement;
   context: {
     timestamp: number;
     timezone: string;

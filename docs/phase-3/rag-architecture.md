@@ -1,16 +1,10 @@
 # RAG 架构说明
 
-> 当前仓库已支持实验性的 Hybrid RAG，但默认检索模式仍是 `rules`。
+> 当前仓库默认以 `hybrid` 检索运行；当索引或 query vector 不可用时，自动回退到 `rules`。
 
 ## 1. 当前状态
 
-默认链路仍然是：
-
-- 本地 JSON 条目
-- 基于节气、体质、情绪、生活标签的规则打分
-- 取 Top 5 注入 Prompt
-
-可选实验链路为：
+默认链路为：
 
 ```text
 规则检索
@@ -33,8 +27,8 @@
 
 ```bash
 pnpm build:knowledge-index
-RAG_RETRIEVAL_MODE=hybrid pnpm dev
-RAG_RETRIEVAL_MODE=hybrid AI_PROVIDER=fallback pnpm smoke
+pnpm dev
+AI_PROVIDER=fallback pnpm smoke
 pnpm eval:generate -- --mode=compare
 ```
 

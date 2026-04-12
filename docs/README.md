@@ -29,8 +29,9 @@
 ## 当前统一口径
 
 - 产品类型：生活方式建议应用，不做医疗诊断
-- AI 默认平台：OpenAI，Gemini 仅作备用
-- MVP 知识库：本地 JSON
+- 当前主链路：先显卦与天机语，再补录，最后生成终极卡
+- 默认模型路径：OpenAI，失败后回本地 fallback
+- 默认检索：`hybrid`，不可用时回退 `rules`
 - MVP 限额：每日 5 次，`Asia/Shanghai` 零点重置
 - MVP 本地键：`tianji_client_id`、`tianji_profile`、`tianji_history`、`tianji_quota`
 

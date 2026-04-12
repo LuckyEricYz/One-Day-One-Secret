@@ -1,5 +1,16 @@
-import type { CalendarContext, HexagramContext, UserProfile } from "../types.js";
-import { constitutionLabels, healthTagLabels, moodDescriptions, moodLabels } from "../shared/labels.js";
+import type {
+  CalendarContext,
+  DailySupplement,
+  HexagramContext,
+  UserProfile
+} from "../types.js";
+import {
+  constitutionLabels,
+  formatSupplementSummary,
+  healthTagLabels,
+  moodDescriptions,
+  moodLabels
+} from "../shared/labels.js";
 import type { KnowledgeSelection } from "./knowledge.js";
 import type { GenerationQualityReport } from "./quality.js";
 
@@ -38,12 +49,15 @@ export function buildUserPrompt(
   calendar: CalendarContext,
   hexagram: HexagramContext,
   userProfile: UserProfile,
-  selection: KnowledgeSelection
+  dailySupplement: DailySupplement,
+  selection: KnowledgeSelection,
+  previewCue: string
 ): string {
   const profileTags =
     userProfile.healthTags.length > 0
       ? userProfile.healthTags.map((tag) => healthTagLabels[tag]).join("、")
       : "无";
+  const supplementSummary = formatSupplementSummary(dailySupplement).join("；");
 
   const requiredKnowledgeLines = [
     selection.seasonal
@@ -76,11 +90,15 @@ export function buildUserPrompt(
 【卦象】
 - 卦名：${hexagram.name}
 - 卦义摘要：${hexagram.summary}
+- 即时天机语预览：${previewCue}
 
 【用户画像】
 - 体质类型：${constitutionLabels[userProfile.constitution]}
 - 生活标签：${profileTags}
 - 今日状态：${moodLabels[userProfile.todayMood]}（${moodDescriptions[userProfile.todayMood]}）
+
+【今日补录】
+- ${supplementSummary}
 
 【必须落地的动作来源】
 ${requiredKnowledgeLines}
@@ -90,9 +108,11 @@ ${supplementalKnowledgeLines}
 
 请严格按照下面的字段职责输出 JSON：
 - mysticSaying：8-16 个汉字，单行短句，像卡片标题，不要写成完整解释句，不要带书名号或引号。
+- mysticSaying 要和“即时天机语预览”保持同一意向，可以润色，但不要完全换主题。
 - mysticExplanation：28-52 个汉字，1-2 句，必须同时交代节气/卦象提示和今天的行动重点。
 - healthAdvice：正好 3 条，每条 10-24 个汉字，必须是普通人今天就能做的具体动作。
 - 第 1 条 advice 优先承接节气动作；第 2 条优先承接今日状态或生活标签；第 3 条优先补恢复性动作。
+- 补录信息必须真实影响 advice，至少 1 条建议要能看出受“今日补录”约束。
 - 3 条 advice 里至少 2 条必须能明显看出改写自上面的具体动作，其中 1 条来自节气动作，1 条来自人物动作或恢复动作。
 - dos 和 donts：各 2 条，每条 2-10 个汉字，只能写标签式短语，不能写成长句，不能直接复述 advice。
 - mysticExplanation 不要写成“你今天偏X，先把Y安顿好”“更适合先顾X，再谈加码”这类模板句。

@@ -43,6 +43,11 @@ MVP 只使用浏览器本地存储，不做服务端持久化。
     "id": "tj-20260411-001",
     "date": "2026-04-11",
     "mood": "tired",
+    "supplementAnswers": {
+      "headSense": "slightly_full",
+      "sleepDuration": "short",
+      "tongueCoating": "thin_white"
+    },
     "result": {
       "mysticSaying": "震雷未息，宜收不宜争",
       "mysticExplanation": "今天更适合把力气收回到日常节奏里。",
@@ -77,6 +82,7 @@ MVP 只使用浏览器本地存储，不做服务端持久化。
 ### 1.3 MVP 规则
 
 - 历史建议最多保留 90 天
+- `supplementAnswers` 只保留在当次历史记录里，不并入长期画像
 - 额度按 `Asia/Shanghai` 自然日重置
 - 删除浏览器数据即清空本地信息
 

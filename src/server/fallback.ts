@@ -1,5 +1,6 @@
 import type {
   CalendarContext,
+  DailySupplement,
   HexagramContext,
   KnowledgeEntry,
   Mood,
@@ -234,6 +235,52 @@ function getHexagramCue(hexagramName: string): { saying: string; explanation: st
   );
 }
 
+function getSupplementFocus(supplement: DailySupplement): string {
+  if (supplement.sleepDuration === "short") {
+    return "睡眠收口";
+  }
+
+  if (supplement.headSense === "rising") {
+    return "降躁减刺激";
+  }
+
+  if (supplement.headSense === "slightly_full") {
+    return "减噪缓息";
+  }
+
+  if (supplement.tongueCoating === "slightly_yellow") {
+    return "补水少辛辣";
+  }
+
+  if (supplement.tongueCoating === "thick_white") {
+    return "清淡热食";
+  }
+
+  return "作息留白";
+}
+
+function getSupplementAdvice(supplement: DailySupplement): string[] {
+  const advice: string[] = [];
+
+  if (supplement.sleepDuration === "short") {
+    advice.push("今晚把收尾时间前移，尽量补一段完整睡眠");
+  }
+
+  if (supplement.headSense === "slightly_full") {
+    advice.push("连续输入一段后就停下来，缓慢呼吸几轮");
+  } else if (supplement.headSense === "rising") {
+    advice.push("今天先把辛辣酒精和争辩都减下来，别再推高火气");
+  }
+
+  if (supplement.tongueCoating === "thick_white") {
+    advice.push("三餐尽量温热清淡，今天少油腻少夜宵");
+  } else if (supplement.tongueCoating === "slightly_yellow") {
+    advice.push("今天分次补水，辛辣酒精都往后撤");
+  }
+
+  return advice;
+}
+
 function buildMysticSaying(
   calendar: CalendarContext,
   hexagram: HexagramContext,
@@ -253,13 +300,15 @@ function buildMysticSaying(
 function buildMysticExplanation(
   calendar: CalendarContext,
   hexagram: HexagramContext,
-  mood: Mood
+  mood: Mood,
+  supplement: DailySupplement
 ): string {
   const hexagramCue = getHexagramCue(hexagram.name);
   const focus = moodFocus[mood].focus;
+  const supplementFocus = getSupplementFocus(supplement);
   const candidates = [
-    `${calendar.solarTermName}时节${stageExplanations[calendar.solarTermStage]}，${hexagramCue.explanation}。你今天偏${moodLabels[mood]}，先把${focus}安顿好。`,
-    `${calendar.solarTermName}到了，${hexagramCue.explanation}。你今天偏${moodLabels[mood]}，更适合先顾${focus}，再谈加码。`
+    `${calendar.solarTermName}时节${stageExplanations[calendar.solarTermStage]}，${hexagramCue.explanation}。你今天偏${moodLabels[mood]}，先顾${focus}，也照看${supplementFocus}。`,
+    `${calendar.solarTermName}到了，${hexagramCue.explanation}。你今天偏${moodLabels[mood]}，更适合先顾${focus}，再把${supplementFocus}放稳。`
   ];
   const seed = buildStableSeed(calendar.solarTermKey, hexagram.name, mood, "explanation");
   return candidates[seed % candidates.length];
@@ -269,7 +318,8 @@ export function buildFallbackResult(
   calendar: CalendarContext,
   hexagram: HexagramContext,
   entries: KnowledgeEntry[],
-  userProfile: UserProfile
+  userProfile: UserProfile,
+  dailySupplement: DailySupplement
 ): TianjiData {
   const usedEntryIds = new Set<string>();
   const usedActionKeys = new Set<string>();
@@ -296,6 +346,18 @@ export function buildFallbackResult(
   ].filter(Boolean) as string[];
 
   const healthAdvice = [...selectedActions];
+  for (const supplementAdvice of getSupplementAdvice(dailySupplement)) {
+    if (healthAdvice.length >= 3) {
+      break;
+    }
+
+    const key = toKey(supplementAdvice);
+    if (!usedActionKeys.has(key)) {
+      usedActionKeys.add(key);
+      healthAdvice.push(supplementAdvice);
+    }
+  }
+
   for (const fallback of fallbackAdviceDefaults[userProfile.todayMood]) {
     if (healthAdvice.length >= 3) {
       break;
@@ -326,14 +388,19 @@ export function buildFallbackResult(
   const normalized =
     normalizeGeneratedData({
       mysticSaying: buildMysticSaying(calendar, hexagram, userProfile.todayMood),
-      mysticExplanation: buildMysticExplanation(calendar, hexagram, userProfile.todayMood),
+      mysticExplanation: buildMysticExplanation(
+        calendar,
+        hexagram,
+        userProfile.todayMood,
+        dailySupplement
+      ),
       healthAdvice: [healthAdvice[0], healthAdvice[1], healthAdvice[2]],
       dos,
       donts
     }) ??
     normalizeGeneratedData({
       mysticSaying: `${calendar.solarTermName}${stageSayings[calendar.solarTermStage]}，${moodFocus[userProfile.todayMood].tail}`,
-      mysticExplanation: `${calendar.solarTermName}时节宜轻展缓行。你今天偏${moodLabels[userProfile.todayMood]}，先把${moodFocus[userProfile.todayMood].focus}安顿好。`,
+      mysticExplanation: `${calendar.solarTermName}时节宜轻展缓行。你今天偏${moodLabels[userProfile.todayMood]}，先顾${moodFocus[userProfile.todayMood].focus}，也照看${getSupplementFocus(dailySupplement)}。`,
       healthAdvice: fallbackAdviceDefaults[userProfile.todayMood],
       dos: moodDos[userProfile.todayMood],
       donts: moodDonts[userProfile.todayMood]

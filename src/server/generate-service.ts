@@ -13,6 +13,7 @@ import {
   getNextShanghaiMidnightIso,
   getShanghaiDateKey
 } from "../shared/time.js";
+import { buildPreviewCue } from "../shared/ritual.js";
 import { getCalendarContext } from "./calendar.js";
 import { buildFallbackResult } from "./fallback.js";
 import { getHexagramContext } from "./hexagrams.js";
@@ -224,7 +225,8 @@ async function prepareKnowledgeSelection(
     solarTermKey: calendar.solarTermKey,
     constitution: payload.userProfile.constitution,
     mood: payload.userProfile.todayMood,
-    healthTags: payload.userProfile.healthTags
+    healthTags: payload.userProfile.healthTags,
+    dailySupplement: payload.dailySupplement
   };
   const queryText =
     retrievalMode === "hybrid" ? buildKnowledgeQueryText(retrievalContext) : undefined;
@@ -331,6 +333,7 @@ export async function generateTianji(
     payload.context.timestamp,
     payload.touchEntropy ?? 0
   );
+  const previewCue = buildPreviewCue(hexagram, payload.userProfile.todayMood);
   const knowledgeSelection = await prepareKnowledgeSelection(payload, calendar, env, requestId);
   const knowledgeEntries = knowledgeSelection.entries;
   const knowledgeIds = knowledgeEntries.map((entry) => entry.id);
@@ -343,7 +346,9 @@ export async function generateTianji(
     calendar,
     hexagram,
     payload.userProfile,
-    knowledgeSelection
+    payload.dailySupplement,
+    knowledgeSelection,
+    previewCue
   );
   const providerConfig = getProviderConfig(env);
   const providerOrder = getProviderOrder(env.AI_PROVIDER);
@@ -476,7 +481,13 @@ export async function generateTianji(
 
   const fallbackReasonCode = getFallbackReasonCode(attempts);
   const fallback = appendRequestMeta(
-    buildFallbackResult(calendar, hexagram, knowledgeEntries, payload.userProfile),
+    buildFallbackResult(
+      calendar,
+      hexagram,
+      knowledgeEntries,
+      payload.userProfile,
+      payload.dailySupplement
+    ),
     requestId,
     fallbackReasonCode
   );

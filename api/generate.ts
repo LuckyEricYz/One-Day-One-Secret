@@ -45,6 +45,10 @@ function summarizeRequestBody(body: unknown) {
     payload.userProfile && typeof payload.userProfile === "object"
       ? (payload.userProfile as Record<string, unknown>)
       : null;
+  const dailySupplement =
+    payload.dailySupplement && typeof payload.dailySupplement === "object"
+      ? (payload.dailySupplement as Record<string, unknown>)
+      : null;
   const context =
     payload.context && typeof payload.context === "object"
       ? (payload.context as Record<string, unknown>)
@@ -60,6 +64,12 @@ function summarizeRequestBody(body: unknown) {
       typeof userProfile?.constitution === "string" ? userProfile.constitution : undefined,
     todayMood: typeof userProfile?.todayMood === "string" ? userProfile.todayMood : undefined,
     healthTagCount: Array.isArray(userProfile?.healthTags) ? userProfile.healthTags.length : undefined,
+    supplementHeadSense:
+      typeof dailySupplement?.headSense === "string" ? dailySupplement.headSense : undefined,
+    supplementSleepDuration:
+      typeof dailySupplement?.sleepDuration === "string" ? dailySupplement.sleepDuration : undefined,
+    supplementTongueCoating:
+      typeof dailySupplement?.tongueCoating === "string" ? dailySupplement.tongueCoating : undefined,
     timestamp: typeof context?.timestamp === "number" ? context.timestamp : undefined,
     timezone: typeof context?.timezone === "string" ? context.timezone : undefined,
     hasLocation: Boolean(context?.location)

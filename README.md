@@ -1,76 +1,44 @@
 # 一日天机
 
-> 一个以节气、卦象和日常状态为输入的生活方式建议 H5。
+> 一个以“粒子成卦 + 纸本天机卡”为核心体验的节气生活方式应用。
 
 ## 项目定位
 
-「一日天机」的目标不是算命，也不是健康诊断工具，而是把节气语境和轻量个体信息组合成一张可分享的“今日建议卡”。
+「一日天机」不是算命工具，也不是健康诊断产品。它把节气语境、轻量个体信息和知识检索结果折成一张可分享的“今日避坑指南”。
 
-产品输出只做三件事：
+当前输出固定为：
 
-- 给出一句有意境的判词
-- 给出一段白话解释
-- 给出 3 条可执行的生活方式建议和 2 组宜忌
+- 1 句判词
+- 1 段白话解释
+- 3 条可执行建议
+- 2 组宜忌
 
-以下内容不属于当前 MVP：
+## 当前主链路
 
-- 疾病诊断、治疗建议、药物或保健品推荐
-- 舌诊拍照识别
-- 默认开启的 RAG 向量检索
-- 跨设备同步和账号体系
-
-## 当前 MVP
-
-MVP 只覆盖一条完整闭环：
-
-1. 首次进入完成 5 题问卷，生成基础画像
+1. 首次进入完成 5 题问卷，生成长期画像
 2. 当日选择 1 个情绪状态
-3. 长按生成今日天机
-4. 查看结果卡
-5. 保存长图或查看历史
+3. Web 点击 / H5 长按粒子球，让混沌成卦
+4. 即时显示卦象与一句天机语
+5. 完成 3 题当日补录
+6. 生成融合节气、卦象与知识库的“一日天机卡”
+7. 保存长图或查看历史
 
-MVP 统一决策如下：
+## 当前约束
 
-- AI 默认平台：OpenAI
-- 备用平台：Gemini
-- 知识来源：本地 JSON 条目
-- 检索默认模式：`rules`
-- 可选实验模式：`RAG_RETRIEVAL_MODE=hybrid`
-- 每日额度：5 次
-- 重置时间：`Asia/Shanghai` 自然日 `00:00`
-- 本地存储键：`tianji_client_id`、`tianji_profile`、`tianji_history`、`tianji_quota`
+- 不提供疾病诊断、治疗建议、药物或保健品推荐
+- 不做舌诊拍照识别
+- 不做账号体系和跨设备同步
+- 不做长期趋势分析
 
-## 输入与输出
+## 技术口径
 
-核心输入：
-
-- 节气与干支上下文
-- 长按产生的随机种子
-- 用户画像：体质类型、生活标签、今日状态
-
-MVP 输出结构：
-
-```json
-{
-  "mysticSaying": "一句不超过 20 字的判词",
-  "mysticExplanation": "1-2 句白话解释",
-  "healthAdvice": ["建议 1", "建议 2", "建议 3"],
-  "dos": ["宜 1", "宜 2"],
-  "donts": ["忌 1", "忌 2"],
-  "meta": {
-    "solarTermName": "清明",
-    "ganZhiSummary": "丙午年 辛卯月 戊辰日",
-    "hexagramName": "雷天大壮",
-    "knowledgeIds": ["seasonal-003", "sleep-004"],
-    "generatedAt": "2026-04-11T13:30:00.000Z",
-    "provider": "openai",
-    "isFallback": false,
-    "requestId": "9d7c3e1e-70b8-4604-b97f-cc5b2efdf6b8"
-  }
-}
-```
-
-当结果走 fallback 时，`meta.fallbackReasonCode` 会返回 `auth`、`network`、`timeout`、`http`、`parse`、`schema` 或 `provider_unavailable`，用于联调和日志定位。
+- 前端：Vite + React
+- 样式：Tailwind CSS + CSS 变量
+- 动画：Framer Motion + 轻量 canvas
+- API：`POST /api/generate`
+- 默认检索：`hybrid`，不可用时自动回退 `rules`
+- 默认模型路径：OpenAI，失败后回本地 fallback
+- 存储：`LocalStorage`
 
 ## 本地联调
 
@@ -79,38 +47,19 @@ cp .env.example .env.local
 # 编辑 .env.local 填入真实密钥
 
 pnpm dev
-pnpm smoke
-```
-
-- `.env.local` 提供默认值，命令行临时传入的环境变量会覆盖同名配置
-- `AI_PROVIDER` 支持 `auto`、`openai`、`kimi`、`gemini`、`fallback`
-- `RAG_RETRIEVAL_MODE` 支持 `rules`、`hybrid`，默认使用 `rules`
-- OpenAI 路径使用官方 SDK + Responses API + structured outputs
-- `pnpm build:knowledge-index` 会按顺序尝试 `embedding -> chat signature -> mock hash`
-- `OPENAI_SIGNATURE_MODEL` 默认跟随 `OPENAI_MODEL`，只在 embedding 不可用时用于生成语义签名索引
-- Kimi 路径只在显式 `AI_PROVIDER=kimi` 时启用，走 OpenAI SDK 的 `chat.completions.create`
-- `AI_PROVIDER=auto` 默认只走 OpenAI，失败后直接回退本地 fallback，不再自动尝试 Gemini
-- `OPENAI_BASE_URL` 默认是 `https://api.openai.com/v1`，也支持填兼容 Responses API 的 OpenAI 代理地址
-- `OPENAI_EMBEDDING_MODEL` 默认是 `text-embedding-3-small`
-- `KIMI_BASE_URL` 默认是 `https://api.kimi.com/coding/v1`
-- `pnpm smoke` 用固定请求体验证当前 provider 路径是否真的可用
-
-```bash
+pnpm typecheck
+pnpm test:quality
+pnpm build
 AI_PROVIDER=fallback pnpm smoke
-AI_PROVIDER=openai pnpm smoke
-AI_PROVIDER=kimi pnpm smoke
-AI_PROVIDER=gemini pnpm smoke
-
-pnpm build:knowledge-index
 RAG_RETRIEVAL_MODE=hybrid AI_PROVIDER=fallback pnpm smoke
-pnpm eval:generate -- --mode=compare
 ```
 
-## CI 与部署
+说明：
 
-- GitHub Actions 负责 `pull_request` / `main` 上的 `pnpm check`
-- Vercel 使用 Git 集成自动生成 Preview 和 Production 部署
-- 当前如果只打通部署链路，Vercel 环境变量可先设置 `AI_PROVIDER=fallback`
+- `.env.local` 提供默认值，命令行环境变量会覆盖同名配置
+- `AI_PROVIDER` 支持 `auto`、`openai`、`kimi`、`gemini`、`fallback`
+- `RAG_RETRIEVAL_MODE` 支持 `hybrid`、`rules`，默认使用 `hybrid`
+- `pnpm build:knowledge-index` 会按 `embedding -> chat signature -> mock hash` 顺序构建索引
 
 ## 文档入口
 
@@ -118,15 +67,11 @@ pnpm eval:generate -- --mode=compare
 - [文档中心](./docs/README.md)
 - [API 规范](./docs/phase-1/api-spec.md)
 - [交互流程](./docs/phase-2/interaction-flow.md)
+- [视觉规范](./docs/phase-2/design-system.md)
 - [隐私政策](./docs/phase-3/privacy-policy.md)
-
-## 目录现状
-
-当前仓库已包含可运行的前后端 MVP、Serverless 生成接口、质量评测脚本，以及可选的实验性 Hybrid RAG 检索链路。
-如未构建 embedding 索引，`RAG_RETRIEVAL_MODE=hybrid` 会自动降级回 `rules`。
 
 ## 文档维护规则
 
-- 总览文档只写已确认决策，不保留互相冲突的备选口径
-- 阶段文档优先服务实现，不用“看起来完整但无法落地”的伪规格
-- 后续规划文档必须明确标注“非 MVP”
+- 只保留当前实现口径，不保留互相冲突的旧流程
+- 阶段文档优先服务实现，不写无法落地的伪规格
+- 后续规划必须明确标注为“非当前版本”

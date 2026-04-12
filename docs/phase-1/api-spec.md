@@ -1,6 +1,6 @@
 # API 接口规范
 
-> MVP 只定义一个对外接口：`POST /api/generate`。
+> 当前版本只定义一个对外接口：`POST /api/generate`。
 
 ## 1. 接口目标
 
@@ -9,9 +9,9 @@
 1. 校验输入
 2. 校验额度
 3. 计算节气与卦象上下文
-4. 检索本地知识条目
-5. 调用 LLM 生成结构化结果
-6. 返回结果并写入额度与历史
+4. 执行知识检索
+5. 调用模型生成结构化结果
+6. 返回结果并写入额度
 
 ## 2. 请求规范
 
@@ -27,13 +27,18 @@ Content-Type: application/json
 ```json
 {
   "clientId": "8f15b8a8-9176-4f88-a85d-20c4a5cf77e0",
-  "pressDurationMs": 3460,
+  "pressDurationMs": 2000,
   "touchEntropy": 127,
   "userProfile": {
     "constitution": "qi_deficiency",
     "healthTags": ["late_sleep", "sedentary"],
     "todayMood": "tired",
     "tongueDiagnosis": null
+  },
+  "dailySupplement": {
+    "headSense": "slightly_full",
+    "sleepDuration": "short",
+    "tongueCoating": "thin_white"
   },
   "context": {
     "timestamp": 1775885400000,
@@ -50,17 +55,26 @@ Content-Type: application/json
 
 | 字段 | 类型 | 必填 | 说明 |
 |:-----|:-----|:-----|:-----|
-| `clientId` | string | ✅ | 前端首次生成并持久化的随机 UUID，用于额度和历史归档 |
-| `pressDurationMs` | number | ✅ | 长按时长，范围 `2000-30000` |
-| `touchEntropy` | number | ❌ | 触摸扰动值，未提供时按 `0` 处理 |
-| `userProfile` | object | ✅ | 画像对象 |
-| `userProfile.constitution` | string | ✅ | 枚举：`balanced` / `qi_deficiency` / `yang_deficiency` / `yin_deficiency` / `qi_stagnation` / `phlegm_dampness` |
-| `userProfile.healthTags` | string[] | ✅ | 允许值：`late_sleep` / `sedentary` / `irregular_diet` / `regular_exercise` |
-| `userProfile.todayMood` | string | ✅ | 枚举：`happy` / `calm` / `tired` / `anxious` / `sad` / `angry` |
-| `userProfile.tongueDiagnosis` | string \| null | ❌ | MVP 固定传 `null`，保留扩展枚举：`option_a` / `option_b` / `option_c` |
-| `context.timestamp` | number | ✅ | 客户端时间戳，毫秒 |
+| `clientId` | string | ✅ | 前端首次生成并持久化的随机 UUID |
+| `pressDurationMs` | number | ✅ | 成卦时长，范围 `2000-30000` |
+| `touchEntropy` | number | ❌ | 交互扰动值，未提供时按 `0` 处理 |
+| `userProfile` | object | ✅ | 长期画像对象 |
+| `userProfile.constitution` | string | ✅ | `balanced` / `qi_deficiency` / `yang_deficiency` / `yin_deficiency` / `qi_stagnation` / `phlegm_dampness` |
+| `userProfile.healthTags` | string[] | ✅ | `late_sleep` / `sedentary` / `irregular_diet` / `regular_exercise` |
+| `userProfile.todayMood` | string | ✅ | `happy` / `calm` / `tired` / `anxious` / `sad` / `angry` |
+| `userProfile.tongueDiagnosis` | string \| null | ❌ | 当前固定传 `null` |
+| `dailySupplement` | object | ✅ | 当日补录，不写入长期画像 |
+| `dailySupplement.headSense` | string | ✅ | `clear` / `slightly_full` / `rising` |
+| `dailySupplement.sleepDuration` | string | ✅ | `short` / `medium` / `long` |
+| `dailySupplement.tongueCoating` | string | ✅ | `thin_white` / `thick_white` / `slightly_yellow` |
+| `context.timestamp` | number | ✅ | 客户端在“成卦瞬间”记录的时间戳 |
 | `context.timezone` | string | ✅ | 当前固定为 `Asia/Shanghai` |
-| `context.location` | object | ❌ | 用户授权后上传，仅用于天气辅助，不持久化 |
+| `context.location` | object | ❌ | 用户授权后上传，仅用于增强，不持久化 |
+
+说明：
+
+- Web 端点击成卦时，`pressDurationMs` 默认使用 `2000`
+- H5 端长按成卦时，前端在达到阈值时立即记录时间种子与时长
 
 ## 3. 成功响应
 
@@ -94,12 +108,11 @@ Content-Type: application/json
 
 ### 3.1 输出约束
 
-- `mysticSaying` 为 4-16 个汉字的短句，适合作为卡片主标题
-- `mysticExplanation` 为 18-52 个汉字的 1-2 句自然语言
+- `mysticSaying` 为 4-16 个汉字短句
+- `mysticExplanation` 为 18-52 个汉字
 - `healthAdvice` 必须正好 3 条，每条 8-24 个汉字
-- `dos` 与 `donts` 各 2 条，每条 2-10 个汉字，使用标签式短语
-- `healthAdvice` 之间不能重复，`dos` / `donts` 也不能直接复述建议正文
-- `meta.knowledgeIds` 必须记录命中的本地条目 id
+- `dos` 与 `donts` 各 2 条，每条 2-10 个汉字
+- `meta.knowledgeIds` 必须记录命中的知识条目 id
 
 ## 4. 错误响应
 
@@ -117,76 +130,30 @@ Content-Type: application/json
 | 错误码 | HTTP 状态码 | 说明 |
 |:-------|:-----------|:-----|
 | `INVALID_INPUT` | 400 | 输入结构或枚举值非法 |
-| `PRESS_TOO_SHORT` | 400 | 长按不足 2 秒 |
+| `PRESS_TOO_SHORT` | 400 | 成卦时长不足 2 秒 |
 | `RATE_LIMIT_EXCEEDED` | 429 | 当日额度已满 |
-| `INTERNAL_ERROR` | 500 | 本地开发代理或未捕获异常导致的内部错误 |
+| `INTERNAL_ERROR` | 500 | 未捕获异常 |
 
-## 5. 限额与身份规则
+## 5. 检索与平台策略
 
-### 5.1 限额
+- 默认检索模式为 `hybrid`
+- 若索引不可用、query embedding 缺失或维度不匹配，自动回退 `rules`
+- `AI_PROVIDER=auto` 默认按 `OpenAI -> fallback` 执行
+- Provider 输出非法 JSON 或结构不合法时，对当前平台最多修复重试 1 次
+- 所有 provider 不可用时，返回本地 fallback 模板
 
-- 每个 `clientId` 每日最多 5 次
-- 重置时间固定为 `Asia/Shanghai` `00:00`
-- 只要成功返回一张天机卡，就计入 1 次
-- 网络失败、输入校验失败不计数
-
-### 5.2 身份标识
-
-MVP 不使用设备指纹。前端首次启动时生成随机 UUID，保存到 `tianji_client_id`，后续请求复用该值。
-
-## 6. 服务端内部接口
-
-### 6.1 AI 适配器
-
-```ts
-type TianjiResult = {
-  mysticSaying: string;
-  mysticExplanation: string;
-  healthAdvice: [string, string, string];
-  dos: [string, string];
-  donts: [string, string];
-  meta: {
-    solarTermName: string;
-    ganZhiSummary: string;
-    hexagramName: string;
-    knowledgeIds: string[];
-    generatedAt: string;
-    provider: "openai" | "gemini" | "kimi" | "fallback";
-    isFallback: boolean;
-    requestId: string;
-    fallbackReasonCode?: "auth" | "network" | "timeout" | "http" | "parse" | "schema" | "provider_unavailable";
-  };
-};
-
-interface AIAdapter {
-  readonly providerName: string;
-  generate(systemPrompt: string, userPrompt: string): Promise<TianjiResult>;
-}
-```
-
-### 6.2 平台策略
-
-- `AI_PROVIDER=auto` 时按 `OpenAI -> fallback` 执行
-- `AI_PROVIDER=openai | kimi | gemini | fallback` 时强制单一路径，用于联调
-- OpenAI 路径使用官方 OpenAI SDK，并通过 Responses API + JSON Schema 约束结构化输出
-- `OPENAI_BASE_URL` 如有自定义，目标端点必须兼容 Responses API
-- Kimi 路径使用 OpenAI SDK 的 `chat.completions.create`，并读取 `KIMI_API_KEY / KIMI_BASE_URL / KIMI_MODEL`
-- Provider 返回非法 JSON 或结构不合法时，对当前平台只重试 1 次
-- 所有 provider 都不可用时返回本地 fallback 模板，并在 `meta` 中补充 `requestId` 与 `fallbackReasonCode`
-
-## 7. 输入校验清单
+## 6. 输入校验清单
 
 - `pressDurationMs` 为整数且在范围内
 - `clientId` 为非空字符串
 - `healthTags` 不允许重复
+- `dailySupplement` 必须完整且枚举合法
 - `timezone` 必须等于 `Asia/Shanghai`
 - 请求体总大小不超过 `10KB`
 
-## 8. 不在当前接口中的内容
-
-以下能力不应在当前接口中提前落地：
+## 7. 不在当前接口中的内容
 
 - 舌诊照片二进制上传
 - 用户账号认证信息
-- 向量检索参数
+- 单独暴露的向量检索接口
 - 趋势分析或历史聚合结果

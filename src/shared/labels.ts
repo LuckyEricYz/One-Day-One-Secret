@@ -1,4 +1,12 @@
-import type { Constitution, HealthTag, Mood } from "../types.js";
+import type {
+  Constitution,
+  DailySupplement,
+  HeadSense,
+  HealthTag,
+  Mood,
+  SleepDuration,
+  TongueCoating
+} from "../types.js";
 
 export const constitutionLabels: Record<Constitution, string> = {
   balanced: "平和",
@@ -34,3 +42,28 @@ export const moodDescriptions: Record<Mood, string> = {
   angry: "需要收束情绪，避免继续加压"
 };
 
+export const headSenseLabels: Record<HeadSense, string> = {
+  clear: "轻松清明",
+  slightly_full: "微微发胀",
+  rising: "有些上冲"
+};
+
+export const sleepDurationLabels: Record<SleepDuration, string> = {
+  short: "少于 5 小时",
+  medium: "5-7 小时",
+  long: "7 小时以上"
+};
+
+export const tongueCoatingLabels: Record<TongueCoating, string> = {
+  thin_white: "薄白",
+  thick_white: "偏白偏厚",
+  slightly_yellow: "微黄"
+};
+
+export function formatSupplementSummary(supplement: DailySupplement): string[] {
+  return [
+    `头面体感 ${headSenseLabels[supplement.headSense]}`,
+    `睡眠 ${sleepDurationLabels[supplement.sleepDuration]}`,
+    `舌苔观感 ${tongueCoatingLabels[supplement.tongueCoating]}`
+  ];
+}

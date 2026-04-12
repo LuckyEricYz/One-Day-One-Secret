@@ -29,6 +29,7 @@ type KnowledgeSignals = {
   constitutionMatch: boolean;
   moodMatch: boolean;
   healthTagHits: number;
+  supplementBoost: number;
 };
 
 type ScoredKnowledgeEntry = {
@@ -64,6 +65,7 @@ export type KnowledgeSelectionDiagnostics = {
     constitutionMatch: boolean;
     moodMatch: boolean;
     healthTagHits: number;
+    supplementBoost: number;
   }>;
 };
 
@@ -77,6 +79,17 @@ export type KnowledgeSelection = {
 };
 
 function getTargetCategories(context: KnowledgeContext): KnowledgeCategory[] {
+  if (context.dailySupplement.headSense === "rising") {
+    return ["emotion", "diet", "sleep", "exercise"];
+  }
+
+  if (
+    context.dailySupplement.tongueCoating === "thick_white" ||
+    context.dailySupplement.tongueCoating === "slightly_yellow"
+  ) {
+    return ["diet", "emotion", "sleep", "exercise"];
+  }
+
   if (context.mood === "anxious" || context.mood === "angry") {
     return ["emotion", "sleep", "diet", "exercise"];
   }
@@ -103,6 +116,10 @@ function getTargetCategories(context: KnowledgeContext): KnowledgeCategory[] {
 }
 
 function getRecoveryCategories(context: KnowledgeContext): KnowledgeCategory[] {
+  if (context.dailySupplement.sleepDuration === "short") {
+    return ["sleep", "emotion", "diet", "exercise"];
+  }
+
   if (context.healthTags.includes("late_sleep")) {
     return ["sleep", "diet", "exercise", "emotion"];
   }
@@ -118,6 +135,36 @@ function getRecoveryCategories(context: KnowledgeContext): KnowledgeCategory[] {
   return ["sleep", "diet", "exercise", "emotion"];
 }
 
+function getSupplementCategoryBoost(entry: KnowledgeEntry, context: KnowledgeContext): number {
+  let boost = 0;
+
+  if (context.dailySupplement.sleepDuration === "short") {
+    if (entry.category === "sleep") boost += 5;
+    if (entry.category === "emotion") boost += 2;
+  } else if (context.dailySupplement.sleepDuration === "long" && entry.category === "exercise") {
+    boost += 1;
+  }
+
+  if (context.dailySupplement.headSense === "slightly_full") {
+    if (entry.category === "emotion") boost += 3;
+    if (entry.category === "diet") boost += 2;
+  } else if (context.dailySupplement.headSense === "rising") {
+    if (entry.category === "emotion") boost += 5;
+    if (entry.category === "diet") boost += 4;
+    if (entry.category === "sleep") boost += 1;
+  }
+
+  if (context.dailySupplement.tongueCoating === "thick_white") {
+    if (entry.category === "diet") boost += 5;
+    if (entry.category === "sleep") boost += 1;
+  } else if (context.dailySupplement.tongueCoating === "slightly_yellow") {
+    if (entry.category === "diet") boost += 4;
+    if (entry.category === "emotion") boost += 1;
+  }
+
+  return boost;
+}
+
 function buildSignals(
   entry: KnowledgeEntry,
   context: KnowledgeContext
@@ -126,7 +173,8 @@ function buildSignals(
     seasonalMatch: entry.tags.solarTerms.includes(context.solarTermKey),
     constitutionMatch: entry.tags.constitutions.includes(context.constitution),
     moodMatch: entry.tags.moods.includes(context.mood),
-    healthTagHits: context.healthTags.filter((tag) => entry.tags.healthTags.includes(tag)).length
+    healthTagHits: context.healthTags.filter((tag) => entry.tags.healthTags.includes(tag)).length,
+    supplementBoost: getSupplementCategoryBoost(entry, context)
   };
 }
 
@@ -136,6 +184,7 @@ function getEntryScore(entry: KnowledgeEntry, signals: KnowledgeSignals): number
     (signals.moodMatch ? 6 : 0) +
     signals.healthTagHits * 4 +
     (signals.constitutionMatch ? 2 : 0) +
+    signals.supplementBoost +
     entry.priority
   );
 }
@@ -523,7 +572,8 @@ export function selectKnowledge(
         seasonalMatch: item.signals.seasonalMatch,
         constitutionMatch: item.signals.constitutionMatch,
         moodMatch: item.signals.moodMatch,
-        healthTagHits: item.signals.healthTagHits
+        healthTagHits: item.signals.healthTagHits,
+        supplementBoost: item.signals.supplementBoost
       }))
     }
   };

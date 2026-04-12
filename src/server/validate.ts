@@ -1,8 +1,11 @@
 import {
   CONSTITUTIONS,
   HEALTH_TAGS,
+  HEAD_SENSE_OPTIONS,
   MOODS,
+  SLEEP_DURATION_OPTIONS,
   TONGUE_DIAGNOSIS_OPTIONS,
+  TONGUE_COATING_OPTIONS,
   type GenerateRequestPayload,
   type TianjiData
 } from "../types.js";
@@ -85,6 +88,10 @@ export function isValidRequestBody(body: unknown): body is GenerateRequestPayloa
     payload.userProfile && typeof payload.userProfile === "object"
       ? (payload.userProfile as Record<string, unknown>)
       : null;
+  const dailySupplement =
+    payload.dailySupplement && typeof payload.dailySupplement === "object"
+      ? (payload.dailySupplement as Record<string, unknown>)
+      : null;
   const context =
     payload.context && typeof payload.context === "object"
       ? (payload.context as Record<string, unknown>)
@@ -93,7 +100,7 @@ export function isValidRequestBody(body: unknown): body is GenerateRequestPayloa
   if (!payload.clientId || typeof payload.clientId !== "string") return false;
   if (!Number.isInteger(payload.pressDurationMs)) return false;
   if (payload.touchEntropy !== undefined && !Number.isInteger(payload.touchEntropy)) return false;
-  if (!userProfile || !context) return false;
+  if (!userProfile || !dailySupplement || !context) return false;
 
   if (!CONSTITUTIONS.includes(userProfile.constitution as (typeof CONSTITUTIONS)[number])) return false;
   if (!MOODS.includes(userProfile.todayMood as (typeof MOODS)[number])) return false;
@@ -113,6 +120,20 @@ export function isValidRequestBody(body: unknown): body is GenerateRequestPayloa
   if (
     !userProfile.healthTags.every((tag) =>
       HEALTH_TAGS.includes(tag as (typeof HEALTH_TAGS)[number])
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    !HEAD_SENSE_OPTIONS.includes(
+      dailySupplement.headSense as (typeof HEAD_SENSE_OPTIONS)[number]
+    ) ||
+    !SLEEP_DURATION_OPTIONS.includes(
+      dailySupplement.sleepDuration as (typeof SLEEP_DURATION_OPTIONS)[number]
+    ) ||
+    !TONGUE_COATING_OPTIONS.includes(
+      dailySupplement.tongueCoating as (typeof TONGUE_COATING_OPTIONS)[number]
     )
   ) {
     return false;

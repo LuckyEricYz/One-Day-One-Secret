@@ -1,7 +1,21 @@
 import OpenAI from "openai";
 
-import { constitutionLabels, healthTagLabels, moodDescriptions, moodLabels } from "../shared/labels.js";
-import type { Constitution, HealthTag, KnowledgeEntry, Mood } from "../types.js";
+import {
+  constitutionLabels,
+  headSenseLabels,
+  healthTagLabels,
+  moodDescriptions,
+  moodLabels,
+  sleepDurationLabels,
+  tongueCoatingLabels
+} from "../shared/labels.js";
+import type {
+  Constitution,
+  DailySupplement,
+  HealthTag,
+  KnowledgeEntry,
+  Mood
+} from "../types.js";
 import type { ServerEnv } from "./env.js";
 import { KNOWLEDGE_ENTRIES } from "./knowledge-data.js";
 import { SOLAR_TERMS } from "./solarTerms.js";
@@ -14,6 +28,7 @@ export type KnowledgeRetrievalContext = {
   constitution: Constitution;
   mood: Mood;
   healthTags: HealthTag[];
+  dailySupplement: DailySupplement;
 };
 
 export type KnowledgeEmbeddingIndexItem = {
@@ -305,6 +320,30 @@ function describeHealthTagIntent(healthTags: HealthTag[]): string[] {
   return intents;
 }
 
+function describeSupplementIntent(supplement: DailySupplement): string[] {
+  const intents: string[] = [];
+
+  if (supplement.sleepDuration === "short") {
+    intents.push("昨夜睡眠偏短，需要把恢复、早收尾和减少刺激放到更前面。");
+  } else if (supplement.sleepDuration === "long") {
+    intents.push("睡眠时长相对充足，建议以稳态修整为主，不必额外加码。");
+  }
+
+  if (supplement.headSense === "slightly_full") {
+    intents.push("头面体感略有发胀，更适合减少连续输入、放慢呼吸和控制辛辣酒精。");
+  } else if (supplement.headSense === "rising") {
+    intents.push("头面体感有些上冲，需要优先降躁、减少争执和刺激性饮食。");
+  }
+
+  if (supplement.tongueCoating === "thick_white") {
+    intents.push("舌苔观感偏白偏厚，建议倾向清淡热食、少夜宵、少油腻。");
+  } else if (supplement.tongueCoating === "slightly_yellow") {
+    intents.push("舌苔观感微黄，建议优先补水、少辛辣酒精和减少熬夜。");
+  }
+
+  return intents;
+}
+
 function getChatSignatureModel(env: ServerEnv): string {
   return env.OPENAI_SIGNATURE_MODEL?.trim() || env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
 }
@@ -562,7 +601,7 @@ export function getEmbeddingModel(env: ServerEnv): string {
 }
 
 export function getRetrievalMode(env: ServerEnv): KnowledgeRetrievalMode {
-  return env.RAG_RETRIEVAL_MODE === "hybrid" ? "hybrid" : "rules";
+  return env.RAG_RETRIEVAL_MODE === "rules" ? "rules" : "hybrid";
 }
 
 export function buildKnowledgeEmbeddingText(entry: KnowledgeEntry): string {
@@ -597,6 +636,7 @@ export function buildKnowledgeQueryText(context: KnowledgeRetrievalContext): str
       ? context.healthTags.map((item) => healthTagLabels[item]).join("、")
       : "无";
   const tagIntent = describeHealthTagIntent(context.healthTags);
+  const supplementIntent = describeSupplementIntent(context.dailySupplement);
 
   return [
     "为今日天机卡检索更贴合的生活方式建议。",
@@ -604,8 +644,12 @@ export function buildKnowledgeQueryText(context: KnowledgeRetrievalContext): str
     `体质类型：${constitutionLabels[context.constitution]}`,
     `今日状态：${moodLabels[context.mood]}，${moodDescriptions[context.mood]}`,
     `生活标签：${healthTags}`,
+    `补录体感：头面 ${headSenseLabels[context.dailySupplement.headSense]}；睡眠 ${
+      sleepDurationLabels[context.dailySupplement.sleepDuration]
+    }；舌苔 ${tongueCoatingLabels[context.dailySupplement.tongueCoating]}`,
     `优先意图：${describeMoodIntent(context.mood)}`,
     ...(tagIntent.length > 0 ? tagIntent.map((line) => `补充意图：${line}`) : []),
+    ...(supplementIntent.length > 0 ? supplementIntent.map((line) => `补录意图：${line}`) : []),
     "目标：找到更适合今天执行的低风险建议，兼顾节气动作、个人状态和恢复动作。"
   ].join("\n");
 }
@@ -711,6 +755,38 @@ function buildQuerySemanticSignature(context: KnowledgeRetrievalContext): number
   if (context.constitution === "qi_stagnation") {
     addVectorWeight(vector, "intent.emotion_deescalation_reduce_stimulation", 1.6);
     addVectorWeight(vector, "intent.light_walk_body_unfolding", 1.1);
+  }
+
+  if (context.dailySupplement.sleepDuration === "short") {
+    addVectorWeight(vector, "category.sleep", 2.8);
+    addVectorWeight(vector, "category.emotion", 1.2);
+    addVectorWeight(vector, "intent.sleep_cleanup", 3);
+    addVectorWeight(vector, "intent.workload_decompression", 1.7);
+  } else if (context.dailySupplement.sleepDuration === "long") {
+    addVectorWeight(vector, "category.exercise", 0.8);
+    addVectorWeight(vector, "intent.training_adjustment_recovery", 1.2);
+  }
+
+  if (context.dailySupplement.headSense === "slightly_full") {
+    addVectorWeight(vector, "category.emotion", 1.6);
+    addVectorWeight(vector, "category.diet", 1.4);
+    addVectorWeight(vector, "intent.emotion_deescalation_reduce_stimulation", 2.3);
+    addVectorWeight(vector, "intent.hydration_reduce_stimulating_food", 1.6);
+  } else if (context.dailySupplement.headSense === "rising") {
+    addVectorWeight(vector, "category.emotion", 2.1);
+    addVectorWeight(vector, "category.diet", 1.8);
+    addVectorWeight(vector, "intent.emotion_deescalation_reduce_stimulation", 2.8);
+    addVectorWeight(vector, "intent.cooling_heat_avoidance", 2);
+    addVectorWeight(vector, "intent.hydration_reduce_stimulating_food", 2.2);
+  }
+
+  if (context.dailySupplement.tongueCoating === "thick_white") {
+    addVectorWeight(vector, "category.diet", 2.6);
+    addVectorWeight(vector, "intent.regular_meals_digestive_ease", 2.8);
+  } else if (context.dailySupplement.tongueCoating === "slightly_yellow") {
+    addVectorWeight(vector, "category.diet", 2.4);
+    addVectorWeight(vector, "intent.hydration_reduce_stimulating_food", 3);
+    addVectorWeight(vector, "intent.cooling_heat_avoidance", 1.3);
   }
 
   return normalizeVector(vector);

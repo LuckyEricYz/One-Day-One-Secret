@@ -1,10 +1,17 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { forwardRef, type ReactNode, useEffect, useMemo, useRef, useState, startTransition } from "react";
+import { forwardRef, type ReactNode, startTransition, useEffect, useRef, useState } from "react";
 
+import { HexagramGlyph } from "./components/HexagramGlyph";
+import { RitualSphere, type RitualActivation } from "./components/RitualSphere";
 import { generateTianji, isGenerateSuccess } from "./core/api";
 import { buildStoredProfile } from "./core/questionnaire";
 import { getGrantedLocation, type OptionalLocation } from "./shared/location";
-import { constitutionLabels, healthTagLabels, moodLabels } from "./shared/labels";
+import {
+  constitutionLabels,
+  formatSupplementSummary,
+  healthTagLabels,
+  moodLabels
+} from "./shared/labels";
 import {
   appendHistory,
   applyServerRemainingQuota,
@@ -17,39 +24,105 @@ import {
   incrementLocalQuota,
   saveStoredProfile
 } from "./shared/storage";
-import { formatDateTime, getShanghaiDateKey, MAX_DAILY_QUOTA, clamp } from "./shared/time";
+import {
+  defaultDailySupplement,
+  supplementOptions,
+  supplementQuestionCopy
+} from "./shared/supplement";
+import { formatDateTime, getShanghaiDateKey, MAX_DAILY_QUOTA } from "./shared/time";
 import type {
+  DailySupplement,
   GenerateRequestPayload,
   HistoryEntry,
   Mood,
   QuestionnaireAnswers,
-  StoredProfile,
-  TianjiData
+  StoredProfile
 } from "./types";
 
-type View = "questionnaire" | "mood" | "press" | "result";
+type View = "questionnaire" | "mood" | "ritual" | "supplement" | "result";
 
 type QuestionnaireOption<T extends string> = {
   label: string;
   value: T;
-  hint?: string;
-};
-
-const moodOrder: Mood[] = ["happy", "calm", "tired", "anxious", "sad", "angry"];
-
-const moodEmoji: Record<Mood, string> = {
-  happy: "😊",
-  calm: "😌",
-  tired: "😴",
-  anxious: "😰",
-  sad: "😢",
-  angry: "😤"
 };
 
 const motionVariants = {
   initial: { opacity: 0, y: 18 },
   animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -12 }
+  exit: { opacity: 0, y: -14 }
+};
+
+const moodOrder: Mood[] = ["happy", "calm", "tired", "anxious", "sad", "angry"];
+
+const moodSealGlyphs: Record<Mood, string> = {
+  happy: "乐",
+  calm: "静",
+  tired: "倦",
+  anxious: "忧",
+  sad: "郁",
+  angry: "燥"
+};
+
+const questionnaireSteps = [
+  {
+    key: "sleep",
+    title: "你的睡眠质量如何？",
+    subtitle: "长期画像只取稳定倾向，不判断好坏。",
+    options: [
+      { label: "经常失眠浅眠", value: "poor" },
+      { label: "偶尔不好", value: "mixed" },
+      { label: "一般都很好", value: "good" }
+    ] satisfies QuestionnaireOption<QuestionnaireAnswers["sleep"]>[]
+  },
+  {
+    key: "temperature",
+    title: "你的手脚温度？",
+    subtitle: "按平时最常见的体感来选。",
+    options: [
+      { label: "经常冰凉", value: "cold" },
+      { label: "有时偏凉", value: "cool" },
+      { label: "一般温暖", value: "warm" }
+    ] satisfies QuestionnaireOption<QuestionnaireAnswers["temperature"]>[]
+  },
+  {
+    key: "digestion",
+    title: "你的消化状况？",
+    subtitle: "只取日常感受，不做诊断含义。",
+    options: [
+      { label: "容易胀气不适", value: "bloating" },
+      { label: "容易腹泻", value: "loose" },
+      { label: "很少有问题", value: "stable" }
+    ] satisfies QuestionnaireOption<QuestionnaireAnswers["digestion"]>[]
+  },
+  {
+    key: "emotion",
+    title: "你的情绪状态？",
+    subtitle: "回想最近一段时间最常见的底色。",
+    options: [
+      { label: "容易焦虑紧张", value: "anxious" },
+      { label: "容易压抑低落", value: "low" },
+      { label: "基本平稳", value: "steady" }
+    ] satisfies QuestionnaireOption<QuestionnaireAnswers["emotion"]>[]
+  },
+  {
+    key: "healthTags",
+    title: "你最近更接近哪些习惯？",
+    subtitle: "这一题可多选，也可以空着。",
+    options: [
+      { label: "长期久坐", value: "sedentary" },
+      { label: "经常熬夜", value: "late_sleep" },
+      { label: "饮食不规律", value: "irregular_diet" },
+      { label: "规律运动", value: "regular_exercise" }
+    ] satisfies QuestionnaireOption<QuestionnaireAnswers["healthTags"][number]>[]
+  }
+] as const;
+
+const knowledgeOriginLabels: Record<string, string> = {
+  seasonal: "节气",
+  diet: "饮食",
+  sleep: "睡眠",
+  exercise: "活动",
+  emotion: "情绪"
 };
 
 export default function App() {
@@ -58,15 +131,20 @@ export default function App() {
   const [clientId, setClientId] = useState("");
   const [profile, setProfile] = useState<StoredProfile | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [activeEntry, setActiveEntry] = useState<HistoryEntry | null>(null);
   const [view, setView] = useState<View>("questionnaire");
   const [selectedMood, setSelectedMood] = useState<Mood>("calm");
+  const [ritualActivation, setRitualActivation] = useState<RitualActivation | null>(null);
+  const [supplementAnswers, setSupplementAnswers] = useState<DailySupplement>(defaultDailySupplement);
   const [location, setLocation] = useState<OptionalLocation>(null);
-  const [result, setResult] = useState<TianjiData | null>(null);
+  const [locationRequested, setLocationRequested] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSavingImage, setIsSavingImage] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [quotaVersion, setQuotaVersion] = useState(0);
+  const [, setQuotaVersion] = useState(0);
+  const [platform, setPlatform] = useState<"web" | "h5">("web");
+  const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
     const nextClientId = ensureClientId();
@@ -81,11 +159,54 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (view !== "press") {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const pointerMedia = window.matchMedia("(pointer: coarse)");
+    const reducedMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 4;
+    const lowPower =
+      (navigator.hardwareConcurrency ?? 4) <= 2 ||
+      memory <= 2;
+
+    function syncPlatform() {
+      setPlatform(pointerMedia.matches || (navigator.maxTouchPoints ?? 0) > 0 ? "h5" : "web");
+      setReducedMotion(reducedMedia.matches || lowPower);
+    }
+
+    function bindMediaChange(media: MediaQueryList) {
+      if ("addEventListener" in media) {
+        media.addEventListener("change", syncPlatform);
+        return () => media.removeEventListener("change", syncPlatform);
+      }
+
+      const legacyMedia = media as MediaQueryList & {
+        addListener: (listener: (event: MediaQueryListEvent) => void) => void;
+        removeListener: (listener: (event: MediaQueryListEvent) => void) => void;
+      };
+
+      legacyMedia.addListener(syncPlatform);
+      return () => legacyMedia.removeListener(syncPlatform);
+    }
+
+    syncPlatform();
+    const unbindPointer = bindMediaChange(pointerMedia);
+    const unbindReduced = bindMediaChange(reducedMedia);
+
+    return () => {
+      unbindPointer();
+      unbindReduced();
+    };
+  }, []);
+
+  useEffect(() => {
+    if ((view !== "ritual" && view !== "supplement") || locationRequested) {
       return;
     }
 
     let cancelled = false;
+    setLocationRequested(true);
     getGrantedLocation().then((nextLocation) => {
       if (!cancelled) {
         setLocation(nextLocation);
@@ -95,13 +216,47 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [view]);
+  }, [locationRequested, view]);
 
-  const quota = useMemo(() => getQuotaSnapshot(), [quotaVersion]);
-  const remainingQuota = useMemo(() => getRemainingLocalQuota(), [quotaVersion]);
+  const quota = getQuotaSnapshot();
+  const remainingQuota = getRemainingLocalQuota();
 
-  async function handleGenerate(pressDurationMs: number, touchEntropy: number) {
-    if (!profile || !clientId) {
+  function resetCurrentRitual() {
+    setRitualActivation(null);
+    setSupplementAnswers(defaultDailySupplement);
+    setErrorMessage("");
+  }
+
+  function handleQuestionnaireComplete(answers: QuestionnaireAnswers) {
+    const nextProfile = buildStoredProfile(answers);
+    saveStoredProfile(nextProfile);
+    setProfile(nextProfile);
+    setSelectedMood("calm");
+    setActiveEntry(null);
+    resetCurrentRitual();
+    setView("mood");
+  }
+
+  function handleMoodEnter(nextMood: Mood) {
+    setSelectedMood(nextMood);
+    setActiveEntry(null);
+    resetCurrentRitual();
+    setView("ritual");
+  }
+
+  function handleRitualActivate(nextActivation: RitualActivation) {
+    if (remainingQuota <= 0) {
+      setErrorMessage("今日天机已满，请查看历史或明日再来。");
+      return;
+    }
+
+    setRitualActivation(nextActivation);
+    setSupplementAnswers(defaultDailySupplement);
+    setErrorMessage("");
+  }
+
+  async function handleGenerate() {
+    if (!profile || !clientId || !ritualActivation) {
       return;
     }
 
@@ -110,53 +265,54 @@ export default function App() {
       return;
     }
 
-    const timestamp = Date.now();
     const payload: GenerateRequestPayload = {
       clientId,
-      pressDurationMs,
-      touchEntropy,
+      pressDurationMs: ritualActivation.pressDurationMs,
+      touchEntropy: ritualActivation.touchEntropy,
       userProfile: {
         constitution: profile.constitution,
         healthTags: profile.healthTags,
         todayMood: selectedMood,
         tongueDiagnosis: null
       },
+      dailySupplement: supplementAnswers,
       context: {
-        timestamp,
+        timestamp: ritualActivation.timestamp,
         timezone: "Asia/Shanghai",
         ...(location ? { location } : {})
       }
     };
 
-    setErrorMessage("");
     setIsGenerating(true);
+    setErrorMessage("");
 
     try {
       const response = await generateTianji(payload);
       if (!isGenerateSuccess(response)) {
         if (response.error.code === "RATE_LIMIT_EXCEEDED") {
-          applyServerRemainingQuota(0, timestamp);
+          applyServerRemainingQuota(0, ritualActivation.timestamp);
           setQuotaVersion((value) => value + 1);
         }
         setErrorMessage(response.error.message);
         return;
       }
 
-      incrementLocalQuota(timestamp);
-      applyServerRemainingQuota(response.remainingQuota, timestamp);
+      incrementLocalQuota(ritualActivation.timestamp);
+      applyServerRemainingQuota(response.remainingQuota, ritualActivation.timestamp);
       setQuotaVersion((value) => value + 1);
 
       const entry: HistoryEntry = {
-        id: `tj-${getShanghaiDateKey(timestamp).replaceAll("-", "")}-${String(history.length + 1).padStart(3, "0")}`,
-        date: getShanghaiDateKey(timestamp),
+        id: `tj-${getShanghaiDateKey(ritualActivation.timestamp).replaceAll("-", "")}-${String(history.length + 1).padStart(3, "0")}`,
+        date: getShanghaiDateKey(ritualActivation.timestamp),
         mood: selectedMood,
+        supplementAnswers,
         result: response.data
       };
 
       const nextHistory = appendHistory(entry);
       startTransition(() => {
         setHistory(nextHistory);
-        setResult(response.data);
+        setActiveEntry(entry);
         setView("result");
       });
     } catch {
@@ -166,38 +322,34 @@ export default function App() {
     }
   }
 
-  function handleQuestionnaireComplete(answers: QuestionnaireAnswers) {
-    const nextProfile = buildStoredProfile(answers);
-    saveStoredProfile(nextProfile);
-    setProfile(nextProfile);
-    setSelectedMood("calm");
-    setView("mood");
-  }
-
   async function handleSaveImage() {
     if (!cardRef.current) {
       return;
     }
 
     setIsSavingImage(true);
+    setErrorMessage("");
 
     try {
       const { default: html2canvas } = await import("html2canvas");
       const canvas = await html2canvas(cardRef.current, {
-        backgroundColor: "#17171b",
+        backgroundColor: "#f7f0df",
         scale: Math.min(window.devicePixelRatio, 2)
       });
       const link = document.createElement("a");
       link.download = `tianji-${Date.now()}.png`;
       link.href = canvas.toDataURL("image/png");
       link.click();
+    } catch (error) {
+      console.error("save image failed", error);
+      setErrorMessage("保存长图失败，请稍后重试。");
     } finally {
       setIsSavingImage(false);
     }
   }
 
   function handleSelectHistory(entry: HistoryEntry) {
-    setResult(entry.result);
+    setActiveEntry(entry);
     setSelectedMood(entry.mood);
     setIsHistoryOpen(false);
     setView("result");
@@ -217,30 +369,37 @@ export default function App() {
     setClientId(nextClientId);
     setProfile(null);
     setHistory([]);
-    setResult(null);
+    setActiveEntry(null);
     setSelectedMood("calm");
     setLocation(null);
+    setLocationRequested(false);
     setErrorMessage("");
     setIsHistoryOpen(false);
     setQuotaVersion((value) => value + 1);
+    resetCurrentRitual();
     setView("questionnaire");
   }
 
   if (!ready) {
     return (
-      <div className="flex min-h-dvh items-center justify-center px-6 text-sm text-[var(--color-muted)]">
-        正在整理今日天机…
+      <div className="flex min-h-dvh items-center justify-center px-6 text-sm text-[color:var(--color-muted)]">
+        正在铺开今日的纸面…
       </div>
     );
   }
 
   return (
-    <div className="relative min-h-dvh overflow-x-hidden px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-6 sm:px-6">
-      <div className="mx-auto flex min-h-[calc(100dvh-48px)] w-full max-w-md flex-col">
+    <div className="relative min-h-dvh overflow-x-hidden px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-6 sm:px-6 lg:px-8">
+      <div className="paper-wash paper-wash--one" aria-hidden="true" />
+      <div className="paper-wash paper-wash--two" aria-hidden="true" />
+
+      <div className="mx-auto flex min-h-[calc(100dvh-48px)] w-full max-w-6xl flex-col">
         <Header
-          remainingQuota={remainingQuota}
           historyCount={history.length}
           onOpenHistory={() => setIsHistoryOpen(true)}
+          platform={platform}
+          quota={quota}
+          remainingQuota={remainingQuota}
         />
 
         <div className="flex-1">
@@ -254,45 +413,77 @@ export default function App() {
             {view === "mood" ? (
               <ScreenFrame key="mood">
                 <MoodSelection
-                  selectedMood={selectedMood}
-                  onSelectMood={(mood) => {
-                    setSelectedMood(mood);
-                    setErrorMessage("");
-                    setView("press");
-                  }}
-                  onRevisitProfile={() => setView("questionnaire")}
                   profile={profile}
+                  selectedMood={selectedMood}
+                  onSelectMood={handleMoodEnter}
+                  onRevisitProfile={() => setView("questionnaire")}
                 />
               </ScreenFrame>
             ) : null}
 
-            {view === "press" ? (
-              <ScreenFrame key="press">
-                <PressToGenerate
-                  mood={selectedMood}
-                  isGenerating={isGenerating}
-                  remainingQuota={remainingQuota}
-                  locationGranted={Boolean(location)}
+            {view === "ritual" ? (
+              <ScreenFrame key="ritual">
+                <RitualScreen
+                  activation={ritualActivation}
                   errorMessage={errorMessage}
-                  onBack={() => setView("mood")}
-                  onLongPressComplete={handleGenerate}
-                />
-              </ScreenFrame>
-            ) : null}
-
-            {view === "result" && result ? (
-              <ScreenFrame key="result">
-                <ResultView
-                  ref={cardRef}
+                  locationGranted={Boolean(location)}
                   mood={selectedMood}
-                  result={result}
-                  onSaveImage={handleSaveImage}
-                  onRegenerate={() => {
-                    setErrorMessage("");
+                  onActivate={handleRitualActivate}
+                  onBack={() => {
+                    resetCurrentRitual();
                     setView("mood");
                   }}
-                  onOpenHistory={() => setIsHistoryOpen(true)}
+                  onContinue={() => {
+                    if (!ritualActivation) {
+                      return;
+                    }
+
+                    setErrorMessage("");
+                    setView("supplement");
+                  }}
+                  onReset={resetCurrentRitual}
+                  platform={platform}
+                  reducedMotion={reducedMotion}
+                  remainingQuota={remainingQuota}
+                />
+              </ScreenFrame>
+            ) : null}
+
+            {view === "supplement" && ritualActivation ? (
+              <ScreenFrame key="supplement">
+                <SupplementFlow
+                  answers={supplementAnswers}
+                  errorMessage={errorMessage}
+                  isGenerating={isGenerating}
+                  mood={selectedMood}
+                  onBack={() => setView("ritual")}
+                  onChange={setSupplementAnswers}
+                  onSubmit={handleGenerate}
+                  ritualActivation={ritualActivation}
+                />
+              </ScreenFrame>
+            ) : null}
+
+            {view === "result" && activeEntry ? (
+              <ScreenFrame key={`result-${activeEntry.id}`}>
+                <ResultView
+                  ref={cardRef}
+                  entry={activeEntry}
                   isSavingImage={isSavingImage}
+                  mood={activeEntry.mood}
+                  onOpenHistory={() => setIsHistoryOpen(true)}
+                  onRegenerate={() => {
+                    setActiveEntry(null);
+                    resetCurrentRitual();
+                    setView("mood");
+                  }}
+                  onSaveImage={handleSaveImage}
+                  ritualActivation={
+                    ritualActivation &&
+                    ritualActivation.hexagram.name === activeEntry.result.meta.hexagramName
+                      ? ritualActivation
+                      : null
+                  }
                 />
               </ScreenFrame>
             ) : null}
@@ -304,40 +495,48 @@ export default function App() {
         history={history}
         open={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
-        onSelect={handleSelectHistory}
         onResetLocalData={handleResetLocalData}
+        onSelect={handleSelectHistory}
       />
 
-      <footer className="mx-auto mt-4 w-full max-w-md text-center text-xs text-[var(--color-muted)]">
-        当前仅提供生活方式建议，不构成医学判断。
+      <footer className="mx-auto mt-6 w-full max-w-6xl text-center text-xs leading-6 text-[color:var(--color-muted)]">
+        一日天机只提供节气语境下的生活方式建议，不构成医学判断。
       </footer>
     </div>
   );
 }
 
 function Header(props: {
-  remainingQuota: number;
   historyCount: number;
   onOpenHistory: () => void;
+  platform: "web" | "h5";
+  quota: ReturnType<typeof getQuotaSnapshot>;
+  remainingQuota: number;
 }) {
   return (
-    <div className="mb-6 flex items-center justify-between">
+    <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div>
-        <p className="text-xs uppercase tracking-[0.32em] text-[var(--color-muted)]">One Day One Secret</p>
-        <h1 className="mt-2 text-2xl font-semibold text-[var(--color-text)]">一日天机</h1>
+        <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+          One Day One Secret
+        </p>
+        <h1 className="mt-3 text-[2.2rem] leading-none text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong','Noto_Serif_SC',serif] sm:text-[3rem]">
+          一日天机
+        </h1>
+        <p className="mt-3 max-w-2xl text-sm leading-7 text-[color:var(--color-muted)]">
+          以混沌粒子成卦，以当日补录收束一张纸本天机卡。桌面端更重沉浸转场，触屏端更重长按仪式。
+        </p>
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="rounded-full border border-[var(--color-border)] bg-white/5 px-3 py-2 text-right">
-          <p className="text-[10px] uppercase tracking-[0.22em] text-[var(--color-muted)]">Today</p>
-          <p className="mt-1 text-sm text-[var(--color-text)]">{props.remainingQuota}/{MAX_DAILY_QUOTA}</p>
-        </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <Badge>{props.platform === "web" ? "Web 沉浸版" : "H5 长按版"}</Badge>
+        <Badge>今日剩余 {props.remainingQuota}/{MAX_DAILY_QUOTA}</Badge>
+        <Badge>{props.quota.date.replaceAll("-", ".")}</Badge>
         <button
-          className="rounded-full border border-[var(--color-border)] bg-white/5 px-3 py-2 text-sm text-[var(--color-text)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+          className="seal-button"
           onClick={props.onOpenHistory}
           type="button"
         >
-          历史 {props.historyCount > 0 ? `(${props.historyCount})` : ""}
+          历史归档 {props.historyCount > 0 ? `(${props.historyCount})` : ""}
         </button>
       </div>
     </div>
@@ -351,12 +550,16 @@ function ScreenFrame({ children }: { children: ReactNode }) {
       initial="initial"
       animate="animate"
       exit="exit"
-      transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+      transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
       className="h-full"
     >
       {children}
     </motion.div>
   );
+}
+
+function PaperPanel(props: { children: ReactNode; className?: string }) {
+  return <section className={`paper-panel ${props.className ?? ""}`.trim()}>{props.children}</section>;
 }
 
 function QuestionnaireFlow(props: { onComplete: (answers: QuestionnaireAnswers) => void }) {
@@ -369,193 +572,160 @@ function QuestionnaireFlow(props: { onComplete: (answers: QuestionnaireAnswers) 
     healthTags: []
   });
 
-  const steps = [
-    {
-      key: "sleep",
-      title: "你的睡眠质量如何？",
-      subtitle: "只需要选一个最接近你的状态。",
-      options: [
-        { label: "经常失眠浅眠", value: "poor" },
-        { label: "偶尔不好", value: "mixed" },
-        { label: "一般都很好", value: "good" }
-      ] satisfies QuestionnaireOption<QuestionnaireAnswers["sleep"]>[]
-    },
-    {
-      key: "temperature",
-      title: "你的手脚温度？",
-      subtitle: "这会影响基础画像的节奏判断。",
-      options: [
-        { label: "经常冰凉", value: "cold" },
-        { label: "有时偏凉", value: "cool" },
-        { label: "一般温暖", value: "warm" }
-      ] satisfies QuestionnaireOption<QuestionnaireAnswers["temperature"]>[]
-    },
-    {
-      key: "digestion",
-      title: "你的消化状况？",
-      subtitle: "不追求准确诊断，只取日常体感。",
-      options: [
-        { label: "容易胀气不适", value: "bloating" },
-        { label: "容易腹泻", value: "loose" },
-        { label: "很少有问题", value: "stable" }
-      ] satisfies QuestionnaireOption<QuestionnaireAnswers["digestion"]>[]
-    },
-    {
-      key: "emotion",
-      title: "你的情绪状态？",
-      subtitle: "按最近一段时间的常见感觉来选。",
-      options: [
-        { label: "容易焦虑紧张", value: "anxious" },
-        { label: "容易压抑低落", value: "low" },
-        { label: "基本平稳", value: "steady" }
-      ] satisfies QuestionnaireOption<QuestionnaireAnswers["emotion"]>[]
-    },
-    {
-      key: "healthTags",
-      title: "你最近更接近哪些习惯？",
-      subtitle: "这一题可多选，也可以直接跳过。",
-      options: [
-        { label: "长期久坐", value: "sedentary" },
-        { label: "经常熬夜", value: "late_sleep" },
-        { label: "饮食不规律", value: "irregular_diet" },
-        { label: "规律运动", value: "regular_exercise" }
-      ] satisfies QuestionnaireOption<QuestionnaireAnswers["healthTags"][number]>[]
-    }
-  ] as const;
-
-  const progress = ((step + 1) / steps.length) * 100;
-  const current = steps[step];
+  const progress = ((step + 1) / questionnaireSteps.length) * 100;
+  const current = questionnaireSteps[step];
 
   return (
-    <div className="flex h-full flex-col justify-between">
-      <div>
-        <div className="rounded-3xl border border-[var(--color-border)] bg-[rgba(255,255,255,0.04)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
-          <p className="text-xs uppercase tracking-[0.3em] text-[var(--color-muted)]">
-            初次问卷 {step + 1}/{steps.length}
-          </p>
-          <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-white/8">
-            <div
-              className="h-full rounded-full bg-[var(--color-accent)] transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.14fr)_minmax(280px,0.86fr)]">
+      <PaperPanel>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+              初次问卷 {step + 1}/{questionnaireSteps.length}
+            </p>
+            <h2 className="mt-3 text-3xl text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong',serif]">
+              {current.title}
+            </h2>
           </div>
+          <div className="seal-stamp">画像</div>
+        </div>
 
-          <h2 className="mt-6 text-2xl font-semibold text-[var(--color-text)]">{current.title}</h2>
-          <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">{current.subtitle}</p>
+        <p className="mt-4 text-sm leading-7 text-[color:var(--color-muted)]">{current.subtitle}</p>
 
-          {current.key !== "healthTags" ? (
-            <div className="mt-6 space-y-3">
-              {current.options.map((option) => {
-                const selected = answers[current.key] === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => {
-                      setAnswers((prev) => ({ ...prev, [current.key]: option.value }));
-                      if (step < steps.length - 1) {
-                        setTimeout(() => setStep((value) => value + 1), 120);
-                      }
-                    }}
-                    className={`w-full rounded-2xl border px-4 py-4 text-left transition ${
-                      selected
-                        ? "border-[var(--color-accent)] bg-[rgba(199,168,106,0.12)] text-[var(--color-text)]"
-                        : "border-[var(--color-border)] bg-white/4 text-[var(--color-text)] hover:border-white/20"
-                    }`}
-                  >
-                    <span className="block text-base">{option.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              {current.options.map((option) => {
-                const selected = answers.healthTags.includes(option.value);
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() =>
-                      setAnswers((prev) => ({
-                        ...prev,
-                        healthTags: selected
-                          ? prev.healthTags.filter((tag) => tag !== option.value)
-                          : [...prev.healthTags, option.value]
-                      }))
+        <div className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-[rgba(40,26,14,0.08)]">
+          <div
+            className="h-full rounded-full bg-[color:var(--color-vermillion)] transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+
+        {current.key !== "healthTags" ? (
+          <div className="mt-8 space-y-3">
+            {current.options.map((option) => {
+              const selected = answers[current.key] === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    setAnswers((prev) => ({ ...prev, [current.key]: option.value }));
+                    if (step < questionnaireSteps.length - 1) {
+                      window.setTimeout(() => setStep((value) => value + 1), 110);
                     }
-                    className={`rounded-2xl border px-4 py-4 text-left transition ${
-                      selected
-                        ? "border-[var(--color-accent)] bg-[rgba(199,168,106,0.12)] text-[var(--color-text)]"
-                        : "border-[var(--color-border)] bg-white/4 text-[var(--color-text)] hover:border-white/20"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
+                  }}
+                  className={`paper-choice w-full text-left ${
+                    selected ? "paper-choice--selected" : ""
+                  }`}
+                >
+                  <span className="text-base text-[color:var(--color-ink)]">{option.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            {current.options.map((option) => {
+              const selected = answers.healthTags.includes(option.value);
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() =>
+                    setAnswers((prev) => ({
+                      ...prev,
+                      healthTags: selected
+                        ? prev.healthTags.filter((tag) => tag !== option.value)
+                        : [...prev.healthTags, option.value]
+                    }))
+                  }
+                  className={`paper-choice text-left ${selected ? "paper-choice--selected" : ""}`}
+                >
+                  <span className="text-base text-[color:var(--color-ink)]">{option.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => setStep((value) => Math.max(0, value - 1))}
+            disabled={step === 0}
+            className="ghost-button disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            上一步
+          </button>
+
+          {step === questionnaireSteps.length - 1 ? (
+            <button
+              type="button"
+              onClick={() => props.onComplete(answers)}
+              className="seal-button"
+            >
+              完成入卷
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setStep((value) => Math.min(questionnaireSteps.length - 1, value + 1))}
+              className="seal-button"
+            >
+              下一问
+            </button>
           )}
         </div>
-      </div>
+      </PaperPanel>
 
-      <div className="mt-6 flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => setStep((value) => Math.max(0, value - 1))}
-          disabled={step === 0}
-          className="rounded-full border border-[var(--color-border)] px-4 py-3 text-sm text-[var(--color-text)] disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          上一步
-        </button>
+      <PaperPanel className="flex flex-col justify-between gap-5">
+        <div>
+          <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+            长期画像
+          </p>
+          <h3 className="mt-3 text-2xl text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong',serif]">
+            这一部分只回答一次
+          </h3>
+          <p className="mt-4 text-sm leading-7 text-[color:var(--color-muted)]">
+            问卷只形成基础画像，用于长期体感倾向。真正影响今天结果的，是后面的粒子成卦与当日补录。
+          </p>
+        </div>
 
-        {step === steps.length - 1 ? (
-          <button
-            type="button"
-            onClick={() => props.onComplete(answers)}
-            className="rounded-full bg-[var(--color-accent)] px-5 py-3 text-sm font-medium text-[#1a1308]"
-          >
-            完成进入
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setStep((value) => Math.min(steps.length - 1, value + 1))}
-            className="rounded-full bg-[var(--color-accent)] px-5 py-3 text-sm font-medium text-[#1a1308]"
-          >
-            下一题
-          </button>
-        )}
-      </div>
+        <div className="space-y-3">
+          <Badge>首次 5 题</Badge>
+          <Badge>只存本地</Badge>
+          <Badge>不做医学结论</Badge>
+        </div>
+      </PaperPanel>
     </div>
   );
 }
 
 function MoodSelection(props: {
+  profile: StoredProfile | null;
   selectedMood: Mood;
   onSelectMood: (mood: Mood) => void;
   onRevisitProfile: () => void;
-  profile: StoredProfile | null;
 }) {
   return (
-    <div className="flex h-full flex-col justify-between">
-      <div className="rounded-3xl border border-[var(--color-border)] bg-[rgba(255,255,255,0.04)] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
-        <p className="text-xs uppercase tracking-[0.32em] text-[var(--color-muted)]">今日状态</p>
-        <h2 className="mt-4 text-3xl font-semibold text-[var(--color-text)]">此刻你的状态如何？</h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
-          基础画像会保持稳定，今天只需要补充一个当下状态。
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.14fr)_minmax(280px,0.86fr)]">
+      <PaperPanel>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+              今日起念
+            </p>
+            <h2 className="mt-3 text-3xl text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong',serif]">
+              此刻你的状态如何？
+            </h2>
+          </div>
+          <div className="seal-stamp">今日</div>
+        </div>
+
+        <p className="mt-4 text-sm leading-7 text-[color:var(--color-muted)]">
+          先选今天的情绪底色，再让粒子球为你显出一卦。
         </p>
 
-        {props.profile ? (
-          <div className="mt-6 flex flex-wrap gap-2">
-            <Badge>{constitutionLabels[props.profile.constitution]}</Badge>
-            {props.profile.healthTags.map((tag) => (
-              <Badge key={tag}>{healthTagLabels[tag]}</Badge>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {moodOrder.map((mood) => {
             const selected = props.selectedMood === mood;
             return (
@@ -563,159 +733,465 @@ function MoodSelection(props: {
                 key={mood}
                 type="button"
                 onClick={() => props.onSelectMood(mood)}
-                className={`rounded-3xl border p-4 text-left transition ${
-                  selected
-                    ? "border-[var(--color-accent)] bg-[rgba(199,168,106,0.12)]"
-                    : "border-[var(--color-border)] bg-white/4 hover:border-white/20"
-                }`}
+                className={`paper-choice text-left ${selected ? "paper-choice--selected" : ""}`}
               >
-                <div className="text-3xl">{moodEmoji[mood]}</div>
-                <p className="mt-3 text-base text-[var(--color-text)]">{moodLabels[mood]}</p>
-                <p className="mt-1 text-xs text-[var(--color-muted)]">点击后进入起卦页</p>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="rounded-full border border-[color:var(--color-line)] px-3 py-1 text-sm text-[color:var(--color-vermillion)]">
+                    {moodSealGlyphs[mood]}
+                  </div>
+                  <p className="text-[11px] uppercase tracking-[0.3em] text-[color:var(--color-muted)]">
+                    Tap In
+                  </p>
+                </div>
+                <p className="mt-5 text-lg text-[color:var(--color-ink)]">{moodLabels[mood]}</p>
+                <p className="mt-2 text-sm leading-6 text-[color:var(--color-muted)]">
+                  选中后立即进入粒子成卦。
+                </p>
               </button>
             );
           })}
         </div>
-      </div>
 
-      <button
-        type="button"
-        onClick={props.onRevisitProfile}
-        className="mt-6 self-start rounded-full border border-[var(--color-border)] px-4 py-3 text-sm text-[var(--color-text)]"
-      >
-        重新填写画像
-      </button>
+        <button
+          type="button"
+          onClick={props.onRevisitProfile}
+          className="ghost-button mt-8"
+        >
+          重新填写长期画像
+        </button>
+      </PaperPanel>
+
+      <PaperPanel className="flex flex-col justify-between gap-5">
+        <div>
+          <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+            当前画像
+          </p>
+          <h3 className="mt-3 text-2xl text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong',serif]">
+            稳定底色仍会参与推演
+          </h3>
+          <p className="mt-4 text-sm leading-7 text-[color:var(--color-muted)]">
+            今天只补一个情绪入口，长期画像会继续作为知识检索和建议约束的一部分。
+          </p>
+        </div>
+
+        {props.profile ? (
+          <div className="flex flex-wrap gap-2">
+            <Badge>{constitutionLabels[props.profile.constitution]}</Badge>
+            {props.profile.healthTags.map((tag) => (
+              <Badge key={tag}>{healthTagLabels[tag]}</Badge>
+            ))}
+          </div>
+        ) : null}
+      </PaperPanel>
     </div>
   );
 }
 
-function PressToGenerate(props: {
-  mood: Mood;
-  isGenerating: boolean;
-  remainingQuota: number;
-  locationGranted: boolean;
+function RitualScreen(props: {
+  activation: RitualActivation | null;
   errorMessage: string;
+  locationGranted: boolean;
+  mood: Mood;
+  onActivate: (activation: RitualActivation) => void;
   onBack: () => void;
-  onLongPressComplete: (pressDurationMs: number, touchEntropy: number) => void;
+  onContinue: () => void;
+  onReset: () => void;
+  platform: "web" | "h5";
+  reducedMotion: boolean;
+  remainingQuota: number;
 }) {
   return (
-    <div className="flex h-full flex-col items-center justify-between">
-      <div className="w-full rounded-3xl border border-[var(--color-border)] bg-[rgba(255,255,255,0.04)] p-6 text-center shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
-        <p className="text-xs uppercase tracking-[0.32em] text-[var(--color-muted)]">今日起卦</p>
-        <h2 className="mt-4 text-3xl font-semibold text-[var(--color-text)]">{moodEmoji[props.mood]} {moodLabels[props.mood]}</h2>
-        <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
-          长按至少 2 秒，让节气、状态和当下节奏一起落成今天的建议卡。
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.16fr)_minmax(320px,0.84fr)]">
+      <PaperPanel className="overflow-hidden">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+              混沌天场
+            </p>
+            <h2 className="mt-3 text-3xl leading-tight text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong',serif]">
+              让流动粒子先替今天显出一卦
+            </h2>
+          </div>
+          <div className="seal-stamp">{moodSealGlyphs[props.mood]}</div>
+        </div>
+
+        <p className="mt-4 max-w-2xl text-sm leading-7 text-[color:var(--color-muted)]">
+          {props.platform === "web"
+            ? "桌面端按下后松开即可成卦，粒子会在纸面上收拢成六爻，再给出一句即时天机语。"
+            : "H5 端以长按成卦，按住 2 秒后粒子会缓缓落纸，先给你一句即时天机语。"}
         </p>
 
         <div className="mt-8 flex justify-center">
-          <LongPressButton
-            disabled={props.remainingQuota <= 0 || props.isGenerating}
-            loading={props.isGenerating}
-            onComplete={props.onLongPressComplete}
+          <RitualSphere
+            activation={props.activation}
+            disabled={props.remainingQuota <= 0}
+            mood={props.mood}
+            onActivate={props.onActivate}
+            platform={props.platform}
+            reducedMotion={props.reducedMotion}
           />
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-2 text-xs text-[var(--color-muted)]">
-          <Badge>剩余 {props.remainingQuota}/{MAX_DAILY_QUOTA}</Badge>
-          <Badge>{props.locationGranted ? "已读取定位增强" : "未请求定位"}</Badge>
-          <Badge>低于 2 秒不会生成</Badge>
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          <Badge>今日剩余 {props.remainingQuota}/{MAX_DAILY_QUOTA}</Badge>
+          <Badge>{props.locationGranted ? "已读取定位增强" : "定位未开启，不影响主链路"}</Badge>
+          <Badge>{props.platform === "web" ? "按下松开显卦" : "长按显卦"}</Badge>
         </div>
 
         {props.errorMessage ? (
-          <p className="mt-5 rounded-2xl border border-[rgba(198,106,85,0.4)] bg-[rgba(198,106,85,0.12)] px-4 py-3 text-sm text-[var(--color-text)]">
+          <p className="mt-5 rounded-3xl border border-[rgba(182,72,50,0.25)] bg-[rgba(182,72,50,0.08)] px-4 py-3 text-sm text-[color:var(--color-ink)]">
             {props.errorMessage}
           </p>
         ) : null}
+
+        <div className="mt-8 flex flex-wrap gap-3">
+          <button type="button" onClick={props.onBack} className="ghost-button">
+            返回状态选择
+          </button>
+          {props.activation ? (
+            <button type="button" onClick={props.onReset} className="ghost-button">
+              重新聚卦
+            </button>
+          ) : null}
+        </div>
+      </PaperPanel>
+
+      <AnimatePresence mode="wait">
+        {props.activation ? (
+          <motion.div
+            key="preview"
+            initial={{ opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 16 }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <PreviewPanel activation={props.activation} onContinue={props.onContinue} />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="ritual-copy"
+            initial={{ opacity: 0, x: 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 16 }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <PaperPanel className="flex h-full flex-col justify-between gap-5">
+              <div>
+                <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+                  即时反馈
+                </p>
+                <h3 className="mt-3 text-2xl leading-tight text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong',serif]">
+                  卦象会先以纸上六爻出现，再给一句天机语
+                </h3>
+                <p className="mt-4 text-sm leading-7 text-[color:var(--color-muted)]">
+                  这一句是即时预览，不等待接口。等你完成补录后，终极卡会把 RAG 知识库、节气与今日体感一起收进去。
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <Badge>先显卦，再补录</Badge>
+                <Badge>补录 3 题必答</Badge>
+                <Badge>终极卡融合知识库</Badge>
+              </div>
+            </PaperPanel>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function PreviewPanel(props: { activation: RitualActivation; onContinue: () => void }) {
+  return (
+    <PaperPanel className="flex h-full flex-col justify-between gap-6">
+      <div>
+        <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+          即时天机语
+        </p>
+        <div className="mt-5 rounded-[28px] border border-[color:var(--color-line)] bg-[rgba(255,255,255,0.35)] p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm tracking-[0.3em] text-[color:var(--color-muted)]">卦象已成</p>
+              <h3 className="mt-3 text-2xl text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong',serif]">
+                {props.activation.hexagram.name}
+              </h3>
+            </div>
+            <div className="seal-stamp">显</div>
+          </div>
+
+          <HexagramGlyph
+            className="mt-6"
+            compact
+            lines={props.activation.hexagram.lines}
+            changingLines={props.activation.hexagram.changingLines}
+          />
+
+          <blockquote className="mt-6 text-2xl leading-[1.65] text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong','Noto_Serif_SC',serif]">
+            「{props.activation.previewCue}」
+          </blockquote>
+        </div>
       </div>
 
-      <button
-        type="button"
-        onClick={props.onBack}
-        className="mt-6 self-start rounded-full border border-[var(--color-border)] px-4 py-3 text-sm text-[var(--color-text)]"
-      >
-        返回状态选择
-      </button>
+      <div>
+        <p className="text-sm leading-7 text-[color:var(--color-muted)]">
+          继续补录 3 个当日体感项，终极卡会把这句天机语收束成更完整的纸本避坑指南。
+        </p>
+        <button type="button" onClick={props.onContinue} className="seal-button mt-6 w-full">
+          注入你的生理能量，开启避坑指南
+        </button>
+      </div>
+    </PaperPanel>
+  );
+}
+
+function SupplementFlow(props: {
+  answers: DailySupplement;
+  errorMessage: string;
+  isGenerating: boolean;
+  mood: Mood;
+  onBack: () => void;
+  onChange: (answers: DailySupplement) => void;
+  onSubmit: () => void;
+  ritualActivation: RitualActivation;
+}) {
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.16fr)_minmax(320px,0.84fr)]">
+      <PaperPanel>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+              今日补录
+            </p>
+            <h2 className="mt-3 text-3xl leading-tight text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong',serif]">
+              把今天的体感补进纸面
+            </h2>
+          </div>
+          <div className="seal-stamp">补录</div>
+        </div>
+
+        <p className="mt-4 text-sm leading-7 text-[color:var(--color-muted)]">
+          这 3 题会真实进入检索与生成，不会写入长期画像。它们只服务今天这张天机卡。
+        </p>
+
+        <div className="mt-8 space-y-6">
+          <SupplementQuestion
+            description={supplementQuestionCopy.headSense.description}
+            options={supplementOptions.headSense}
+            title={supplementQuestionCopy.headSense.title}
+            value={props.answers.headSense}
+            onChange={(value) => props.onChange({ ...props.answers, headSense: value })}
+          />
+          <SupplementQuestion
+            description={supplementQuestionCopy.sleepDuration.description}
+            options={supplementOptions.sleepDuration}
+            title={supplementQuestionCopy.sleepDuration.title}
+            value={props.answers.sleepDuration}
+            onChange={(value) => props.onChange({ ...props.answers, sleepDuration: value })}
+          />
+          <SupplementQuestion
+            description={supplementQuestionCopy.tongueCoating.description}
+            options={supplementOptions.tongueCoating}
+            title={supplementQuestionCopy.tongueCoating.title}
+            value={props.answers.tongueCoating}
+            onChange={(value) => props.onChange({ ...props.answers, tongueCoating: value })}
+          />
+        </div>
+
+        {props.errorMessage ? (
+          <p className="mt-6 rounded-3xl border border-[rgba(182,72,50,0.25)] bg-[rgba(182,72,50,0.08)] px-4 py-3 text-sm text-[color:var(--color-ink)]">
+            {props.errorMessage}
+          </p>
+        ) : null}
+
+        <div className="mt-8 flex flex-wrap gap-3">
+          <button type="button" onClick={props.onBack} className="ghost-button">
+            返回天机语
+          </button>
+          <button type="button" onClick={props.onSubmit} className="seal-button" disabled={props.isGenerating}>
+            {props.isGenerating ? "正在合成一日天机卡…" : "生成一日天机卡"}
+          </button>
+        </div>
+      </PaperPanel>
+
+      <PaperPanel className="flex h-full flex-col justify-between gap-6">
+        <div>
+          <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+            预览摘要
+          </p>
+          <h3 className="mt-3 text-2xl text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong',serif]">
+            {props.ritualActivation.hexagram.name}
+          </h3>
+          <p className="mt-4 text-sm leading-7 text-[color:var(--color-muted)]">
+            当前情绪为 {moodLabels[props.mood]}。补录提交后，会基于这句预览天机继续扩成终极卡。
+          </p>
+        </div>
+
+        <div className="rounded-[28px] border border-[color:var(--color-line)] bg-[rgba(255,255,255,0.35)] p-5">
+          <HexagramGlyph
+            compact
+            lines={props.ritualActivation.hexagram.lines}
+            changingLines={props.ritualActivation.hexagram.changingLines}
+          />
+          <blockquote className="mt-5 text-2xl leading-[1.65] text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong',serif]">
+            「{props.ritualActivation.previewCue}」
+          </blockquote>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {formatSupplementSummary(props.answers).map((item) => (
+            <Badge key={item}>{item}</Badge>
+          ))}
+        </div>
+      </PaperPanel>
     </div>
+  );
+}
+
+function SupplementQuestion<T extends string>(props: {
+  description: string;
+  options: Array<{ value: T; label: string }>;
+  title: string;
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <section className="rounded-[26px] border border-[color:var(--color-line)] bg-[rgba(255,255,255,0.28)] p-5">
+      <h3 className="text-xl leading-tight text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong',serif]">
+        {props.title}
+      </h3>
+      <p className="mt-2 text-sm leading-6 text-[color:var(--color-muted)]">{props.description}</p>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        {props.options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => props.onChange(option.value)}
+            className={`paper-choice text-left ${props.value === option.value ? "paper-choice--selected" : ""}`}
+          >
+            <span className="text-sm leading-6 text-[color:var(--color-ink)]">{option.label}</span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
 const ResultView = forwardRef<HTMLDivElement, {
-  mood: Mood;
-  result: TianjiData;
+  entry: HistoryEntry;
   isSavingImage: boolean;
-  onSaveImage: () => void;
-  onRegenerate: () => void;
+  mood: Mood;
   onOpenHistory: () => void;
+  onRegenerate: () => void;
+  onSaveImage: () => void;
+  ritualActivation: RitualActivation | null;
 }>(function ResultView(
   props: {
-    mood: Mood;
-    result: TianjiData;
+    entry: HistoryEntry;
     isSavingImage: boolean;
-    onSaveImage: () => void;
-    onRegenerate: () => void;
+    mood: Mood;
     onOpenHistory: () => void;
+    onRegenerate: () => void;
+    onSaveImage: () => void;
+    ritualActivation: RitualActivation | null;
   },
   ref
 ) {
+  const result = props.entry.result;
+  const currentHexagram = props.ritualActivation?.hexagram ?? null;
+  const originChips = getKnowledgeOriginChips(result.meta.knowledgeIds);
+  const supplementSummary = props.entry.supplementAnswers
+    ? formatSupplementSummary(props.entry.supplementAnswers)
+    : [];
+
   return (
-    <div className="flex h-full flex-col">
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.08fr)_320px]">
       <motion.div
         ref={ref}
-        className="rounded-[28px] border border-[var(--color-border)] bg-[linear-gradient(180deg,rgba(23,23,27,0.96),rgba(18,18,24,0.92))] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.28)]"
+        className="paper-scroll"
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
       >
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.32em] text-[var(--color-muted)]">
-              {props.result.meta.solarTermName}
+            <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+              一日天机卡
             </p>
-            <h2 className="mt-2 text-2xl font-semibold text-[var(--color-accent)]">
-              {props.result.meta.hexagramName}
+            <h2 className="mt-3 text-3xl leading-none text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong',serif]">
+              {result.meta.hexagramName}
             </h2>
           </div>
-
-          <div className="text-right">
-            <p className="text-3xl">{moodEmoji[props.mood]}</p>
-            {props.result.meta.isFallback ? (
-              <p className="mt-2 text-xs text-[var(--color-muted)]">基础 fallback</p>
-            ) : (
-              <p className="mt-2 text-xs text-[var(--color-muted)]">{props.result.meta.provider}</p>
-            )}
-          </div>
+          <div className="seal-stamp">机</div>
         </div>
 
-        <blockquote className="mt-8 text-3xl leading-[1.55] text-[var(--color-text)] [font-family:'LXGW_WenKai','STKaiti',serif]">
-          「{props.result.mysticSaying}」
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          <Badge>{result.meta.solarTermName}</Badge>
+          <Badge>{result.meta.ganZhiSummary}</Badge>
+          <Badge>{result.meta.isFallback ? "基础 fallback" : result.meta.provider}</Badge>
+        </div>
+
+        {currentHexagram ? (
+          <div className="mt-8 rounded-[28px] border border-[color:var(--color-line)] bg-[rgba(255,255,255,0.34)] p-5">
+            <HexagramGlyph lines={currentHexagram.lines} changingLines={currentHexagram.changingLines} />
+          </div>
+        ) : null}
+
+        <blockquote className="mt-8 text-[2.2rem] leading-[1.55] text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong','Noto_Serif_SC',serif]">
+          「{result.mysticSaying}」
         </blockquote>
 
-        <p className="mt-5 text-sm leading-7 text-[var(--color-muted)]">
-          {props.result.mysticExplanation}
+        <p className="mt-5 text-base leading-8 text-[color:var(--color-muted)]">
+          {result.mysticExplanation}
         </p>
 
-        <div className="mt-6 h-px bg-[var(--color-border)]" />
+        <div className="ink-divider mt-7" />
 
-        <section className="mt-6">
-          <p className="text-xs uppercase tracking-[0.32em] text-[var(--color-muted)]">今日建议</p>
-          <ul className="mt-4 space-y-3">
-            {props.result.healthAdvice.map((item) => (
+        <section className="mt-7">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+              一日避坑指南
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {originChips.map((item) => (
+                <Badge key={item}>{item}</Badge>
+              ))}
+            </div>
+          </div>
+
+          <ol className="mt-5 space-y-3">
+            {result.healthAdvice.map((item, index) => (
               <li
                 key={item}
-                className="flex items-start gap-3 rounded-2xl border border-[var(--color-border)] bg-white/4 px-4 py-3 text-sm leading-6 text-[var(--color-text)]"
+                className="rounded-[24px] border border-[color:var(--color-line)] bg-[rgba(255,255,255,0.28)] px-4 py-4 text-sm leading-7 text-[color:var(--color-ink)]"
               >
-                <span className="mt-1 h-2 w-2 rounded-full bg-[var(--color-accent)]" />
-                <span>{item}</span>
+                <span className="mr-3 inline-flex h-7 w-7 items-center justify-center rounded-full border border-[rgba(182,72,50,0.24)] bg-[rgba(182,72,50,0.08)] text-xs text-[color:var(--color-vermillion)]">
+                  {index + 1}
+                </span>
+                {item}
               </li>
             ))}
-          </ul>
+          </ol>
         </section>
 
-        <section className="mt-6 grid grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-[rgba(109,154,107,0.3)] bg-[rgba(109,154,107,0.08)] p-4">
-            <p className="text-xs uppercase tracking-[0.28em] text-[var(--color-positive)]">宜</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {props.result.dos.map((item) => (
+        {supplementSummary.length > 0 ? (
+          <section className="mt-7">
+            <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+              今日注能
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {supplementSummary.map((item) => (
+                <Badge key={item}>{item}</Badge>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="mt-7 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-[26px] border border-[rgba(88,112,71,0.22)] bg-[rgba(88,112,71,0.08)] p-4">
+            <p className="text-xs uppercase tracking-[0.32em] text-[color:var(--color-positive)]">宜</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {result.dos.map((item) => (
                 <Badge key={item} tone="positive">
                   {item}
                 </Badge>
@@ -723,10 +1199,10 @@ const ResultView = forwardRef<HTMLDivElement, {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[rgba(198,106,85,0.3)] bg-[rgba(198,106,85,0.08)] p-4">
-            <p className="text-xs uppercase tracking-[0.28em] text-[var(--color-negative)]">忌</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {props.result.donts.map((item) => (
+          <div className="rounded-[26px] border border-[rgba(154,80,61,0.22)] bg-[rgba(154,80,61,0.08)] p-4">
+            <p className="text-xs uppercase tracking-[0.32em] text-[color:var(--color-negative)]">忌</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {result.donts.map((item) => (
                 <Badge key={item} tone="negative">
                   {item}
                 </Badge>
@@ -735,37 +1211,53 @@ const ResultView = forwardRef<HTMLDivElement, {
           </div>
         </section>
 
-        <div className="mt-6 rounded-2xl border border-[var(--color-border)] bg-white/4 px-4 py-4 text-xs leading-6 text-[var(--color-muted)]">
-          <p>{props.result.meta.ganZhiSummary}</p>
-          <p>{formatDateTime(props.result.meta.generatedAt)}</p>
+        <div className="mt-7 rounded-[26px] border border-[color:var(--color-line)] bg-[rgba(255,255,255,0.26)] px-4 py-4 text-sm leading-7 text-[color:var(--color-muted)]">
+          <p>{formatDateTime(result.meta.generatedAt)}</p>
+          <p>request id: {result.meta.requestId.slice(0, 8)}</p>
         </div>
       </motion.div>
 
-      <div className="mt-6 flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={props.onSaveImage}
-          disabled={props.isSavingImage}
-          className="rounded-full bg-[var(--color-accent)] px-5 py-3 text-sm font-medium text-[#1a1308] disabled:opacity-60"
-        >
-          {props.isSavingImage ? "正在导出…" : "保存长图"}
-        </button>
+      <div className="flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start">
+        <PaperPanel>
+          <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+            今日印记
+          </p>
+          <div className="mt-4 flex items-center gap-3">
+            <div className="seal-stamp">{moodSealGlyphs[props.mood]}</div>
+            <div>
+              <p className="text-sm text-[color:var(--color-muted)]">情绪底色</p>
+              <p className="mt-1 text-lg text-[color:var(--color-ink)]">{moodLabels[props.mood]}</p>
+            </div>
+          </div>
 
-        <button
-          type="button"
-          onClick={props.onRegenerate}
-          className="rounded-full border border-[var(--color-border)] px-5 py-3 text-sm text-[var(--color-text)]"
-        >
-          再来一次
-        </button>
+          {props.ritualActivation ? (
+            <div className="mt-5 rounded-[24px] border border-[color:var(--color-line)] bg-[rgba(255,255,255,0.26)] p-4">
+              <p className="text-xs uppercase tracking-[0.3em] text-[color:var(--color-muted)]">
+                即时天机语
+              </p>
+              <p className="mt-3 text-base leading-7 text-[color:var(--color-ink)]">
+                {props.ritualActivation.previewCue}
+              </p>
+            </div>
+          ) : null}
+        </PaperPanel>
 
-        <button
-          type="button"
-          onClick={props.onOpenHistory}
-          className="rounded-full border border-[var(--color-border)] px-5 py-3 text-sm text-[var(--color-text)]"
-        >
-          查看历史
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={props.onSaveImage}
+            disabled={props.isSavingImage}
+            className="seal-button"
+          >
+            {props.isSavingImage ? "正在导出…" : "保存长图"}
+          </button>
+          <button type="button" onClick={props.onRegenerate} className="ghost-button">
+            再起一卦
+          </button>
+          <button type="button" onClick={props.onOpenHistory} className="ghost-button">
+            查看历史
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -775,8 +1267,8 @@ function HistoryDrawer(props: {
   history: HistoryEntry[];
   open: boolean;
   onClose: () => void;
-  onSelect: (entry: HistoryEntry) => void;
   onResetLocalData: () => void;
+  onSelect: (entry: HistoryEntry) => void;
 }) {
   return (
     <AnimatePresence>
@@ -785,38 +1277,39 @@ function HistoryDrawer(props: {
           <motion.button
             type="button"
             aria-label="关闭历史"
-            className="fixed inset-0 z-40 bg-black/50"
+            className="fixed inset-0 z-40 bg-[rgba(38,22,10,0.36)] backdrop-blur-[2px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={props.onClose}
           />
+
           <motion.aside
-            className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[76dvh] w-full max-w-md rounded-t-[28px] border border-[var(--color-border)] bg-[#121218] px-4 pb-[max(20px,env(safe-area-inset-bottom))] pt-4 shadow-[0_-24px_80px_rgba(0,0,0,0.35)]"
+            className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-h-[78dvh] w-full max-w-3xl rounded-t-[34px] border border-[color:var(--color-line)] bg-[linear-gradient(180deg,rgba(248,243,232,0.98),rgba(242,231,213,0.98))] px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-4 shadow-[0_-24px_80px_rgba(76,48,19,0.18)] sm:px-6"
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div className="mx-auto h-1.5 w-16 rounded-full bg-white/10" />
-            <div className="mt-4 flex items-center justify-between">
+            <div className="mx-auto h-1.5 w-16 rounded-full bg-[rgba(40,26,14,0.14)]" />
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-[var(--color-muted)]">历史归档</p>
-                <h3 className="mt-2 text-xl font-semibold text-[var(--color-text)]">最近生成</h3>
+                <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
+                  历史归档
+                </p>
+                <h3 className="mt-3 text-2xl text-[color:var(--color-ink)] [font-family:'Songti_SC','STSong',serif]">
+                  最近生成的天机卡
+                </h3>
               </div>
-              <button
-                type="button"
-                className="rounded-full border border-[var(--color-border)] px-4 py-2 text-sm text-[var(--color-text)]"
-                onClick={props.onClose}
-              >
+              <button type="button" onClick={props.onClose} className="ghost-button">
                 关闭
               </button>
             </div>
 
             <div className="mt-5 space-y-3 overflow-y-auto pb-4">
               {props.history.length === 0 ? (
-                <div className="rounded-2xl border border-[var(--color-border)] bg-white/4 p-4 text-sm text-[var(--color-muted)]">
-                  还没有历史记录。生成第一张天机卡后会出现在这里。
+                <div className="rounded-[26px] border border-[color:var(--color-line)] bg-[rgba(255,255,255,0.32)] p-4 text-sm leading-7 text-[color:var(--color-muted)]">
+                  还没有历史记录。显出第一卦之后，它会静静留在这里。
                 </div>
               ) : (
                 props.history.map((entry) => (
@@ -824,16 +1317,23 @@ function HistoryDrawer(props: {
                     key={entry.id}
                     type="button"
                     onClick={() => props.onSelect(entry)}
-                    className="w-full rounded-2xl border border-[var(--color-border)] bg-white/4 p-4 text-left transition hover:border-white/20"
+                    className="paper-choice w-full text-left"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm text-[var(--color-accent)]">{entry.result.meta.hexagramName}</p>
-                        <p className="mt-1 text-base text-[var(--color-text)]">{entry.result.mysticSaying}</p>
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="max-w-[32rem]">
+                        <p className="text-sm tracking-[0.26em] text-[color:var(--color-muted)]">
+                          {entry.result.meta.hexagramName}
+                        </p>
+                        <p className="mt-2 text-lg text-[color:var(--color-ink)]">{entry.result.mysticSaying}</p>
+                        {entry.supplementAnswers ? (
+                          <p className="mt-2 text-sm leading-6 text-[color:var(--color-muted)]">
+                            {formatSupplementSummary(entry.supplementAnswers).join(" / ")}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="text-right">
-                        <p className="text-2xl">{moodEmoji[entry.mood]}</p>
-                        <p className="mt-2 text-xs text-[var(--color-muted)]">
+                        <div className="seal-stamp">{moodSealGlyphs[entry.mood]}</div>
+                        <p className="mt-3 text-xs leading-5 text-[color:var(--color-muted)]">
                           {formatDateTime(entry.result.meta.generatedAt)}
                         </p>
                       </div>
@@ -843,16 +1343,18 @@ function HistoryDrawer(props: {
               )}
             </div>
 
-            <div className="border-t border-[var(--color-border)] pt-4">
+            <div className="ink-divider mt-2" />
+
+            <div className="mt-4">
               <button
                 type="button"
                 onClick={props.onResetLocalData}
-                className="w-full rounded-2xl border border-[rgba(198,106,85,0.35)] bg-[rgba(198,106,85,0.08)] px-4 py-3 text-sm text-[var(--color-negative)] transition hover:border-[rgba(198,106,85,0.55)]"
+                className="w-full rounded-[22px] border border-[rgba(154,80,61,0.28)] bg-[rgba(154,80,61,0.08)] px-4 py-3 text-sm text-[color:var(--color-negative)]"
               >
                 重置本地数据
               </button>
-              <p className="mt-2 text-xs leading-5 text-[var(--color-muted)]">
-                会清空本地画像、历史记录、额度和设备标识，适合重新验证生成链路。
+              <p className="mt-2 text-xs leading-6 text-[color:var(--color-muted)]">
+                会清空长期画像、历史、今日额度和设备标识，适合重新验证完整链路。
               </p>
             </div>
           </motion.aside>
@@ -862,115 +1364,29 @@ function HistoryDrawer(props: {
   );
 }
 
-function LongPressButton(props: {
-  disabled: boolean;
-  loading: boolean;
-  onComplete: (duration: number, entropy: number) => void;
-}) {
-  const [progress, setProgress] = useState(0);
-  const [pressing, setPressing] = useState(false);
-  const startRef = useRef(0);
-  const frameRef = useRef<number | null>(null);
-  const entropyRef = useRef(0);
-
-  function stopAnimation() {
-    if (frameRef.current !== null) {
-      cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-    }
-  }
-
-  function animate() {
-    const elapsed = performance.now() - startRef.current;
-    setProgress(clamp(elapsed / 2000, 0, 1));
-    frameRef.current = requestAnimationFrame(animate);
-  }
-
-  function finish(event: React.PointerEvent<HTMLButtonElement>) {
-    event.currentTarget.releasePointerCapture(event.pointerId);
-    stopAnimation();
-    setPressing(false);
-
-    const elapsed = Math.round(clamp(performance.now() - startRef.current, 0, 30000));
-    const completed = elapsed >= 2000;
-    setProgress(0);
-
-    if (completed) {
-      props.onComplete(elapsed, entropyRef.current);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      disabled={props.disabled}
-      className={`relative flex h-44 w-44 items-center justify-center rounded-full border border-[var(--color-border)] bg-[radial-gradient(circle_at_center,rgba(199,168,106,0.18),rgba(255,255,255,0.02))] text-center transition ${
-        props.disabled ? "cursor-not-allowed opacity-55" : "active:scale-[0.98]"
-      }`}
-      onPointerDown={(event) => {
-        if (props.disabled) {
-          return;
-        }
-
-        event.currentTarget.setPointerCapture(event.pointerId);
-        entropyRef.current = Math.round(((event.clientX + 7) * 13 + (event.clientY + 11) * 7) % 997);
-        startRef.current = performance.now();
-        setPressing(true);
-        setProgress(0);
-        stopAnimation();
-        frameRef.current = requestAnimationFrame(animate);
-      }}
-      onPointerUp={finish}
-      onPointerCancel={() => {
-        stopAnimation();
-        setPressing(false);
-        setProgress(0);
-      }}
-    >
-      <svg className="absolute inset-0 -rotate-90" viewBox="0 0 176 176">
-        <circle cx="88" cy="88" r="78" stroke="rgba(255,255,255,0.08)" strokeWidth="8" fill="transparent" />
-        <circle
-          cx="88"
-          cy="88"
-          r="78"
-          stroke="var(--color-accent)"
-          strokeWidth="8"
-          strokeLinecap="round"
-          fill="transparent"
-          strokeDasharray={490}
-          strokeDashoffset={490 - 490 * progress}
-        />
-      </svg>
-
-      <div className="relative px-6">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/6 text-2xl">
-          ☯
-        </div>
-        <p className="mt-4 text-base text-[var(--color-text)]">
-          {props.loading ? "推演中…" : pressing ? "保持住" : "长按感应天机"}
-        </p>
-        <p className="mt-2 text-xs text-[var(--color-muted)]">
-          {props.loading ? "请等待结果卡显现" : "至少按住 2 秒"}
-        </p>
-      </div>
-    </button>
-  );
-}
-
 function Badge(props: {
   children: ReactNode;
   tone?: "neutral" | "positive" | "negative";
 }) {
   const className =
     props.tone === "positive"
-      ? "border-[rgba(109,154,107,0.35)] bg-[rgba(109,154,107,0.08)] text-[var(--color-positive)]"
+      ? "border-[rgba(88,112,71,0.22)] bg-[rgba(88,112,71,0.08)] text-[color:var(--color-positive)]"
       : props.tone === "negative"
-        ? "border-[rgba(198,106,85,0.35)] bg-[rgba(198,106,85,0.08)] text-[var(--color-negative)]"
-        : "border-[var(--color-border)] bg-white/6 text-[var(--color-muted)]";
+        ? "border-[rgba(154,80,61,0.22)] bg-[rgba(154,80,61,0.08)] text-[color:var(--color-negative)]"
+        : "border-[color:var(--color-line)] bg-[rgba(255,255,255,0.26)] text-[color:var(--color-muted)]";
 
-  return (
-    <span className={`inline-flex rounded-full border px-3 py-1.5 text-xs ${className}`}>
-      {props.children}
-    </span>
-  );
+  return <span className={`inline-flex rounded-full border px-3 py-1.5 text-xs ${className}`}>{props.children}</span>;
+}
+
+function getKnowledgeOriginChips(knowledgeIds: string[]): string[] {
+  const labels = new Set<string>();
+
+  knowledgeIds.forEach((id) => {
+    const category = id.split("-")[0];
+    if (knowledgeOriginLabels[category]) {
+      labels.add(knowledgeOriginLabels[category]);
+    }
+  });
+
+  return [...labels];
 }

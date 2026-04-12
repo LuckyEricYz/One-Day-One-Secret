@@ -3,6 +3,7 @@ import { loadDevEnv } from "../src/server/env.js";
 import { generateTianji } from "../src/server/generate-service.js";
 import { selectKnowledge } from "../src/server/knowledge.js";
 import { KNOWLEDGE_EMBEDDING_INDEX } from "../src/server/knowledge-index.generated.js";
+import { defaultDailySupplement } from "../src/shared/supplement.js";
 import {
   evaluateBatchVariation,
   evaluateGenerationQuality
@@ -15,13 +16,19 @@ import {
 } from "../src/server/rag.js";
 import { getCalendarContext } from "../src/server/calendar.js";
 import { getHexagramContext } from "../src/server/hexagrams.js";
-import type { GenerateRequestPayload, TianjiData, UserProfile } from "../src/types.js";
+import type {
+  DailySupplement,
+  GenerateRequestPayload,
+  TianjiData,
+  UserProfile
+} from "../src/types.js";
 
 type SampleCase = {
   id: string;
   pressDurationMs: number;
   touchEntropy: number;
   userProfile: UserProfile;
+  dailySupplement: DailySupplement;
 };
 
 type EvaluationMode = KnowledgeRetrievalMode | "compare";
@@ -38,7 +45,8 @@ const SAMPLE_CASES: SampleCase[] = [
       healthTags: ["regular_exercise"],
       todayMood: "calm",
       tongueDiagnosis: null
-    }
+    },
+    dailySupplement: defaultDailySupplement
   },
   {
     id: "calm-irregular",
@@ -49,6 +57,11 @@ const SAMPLE_CASES: SampleCase[] = [
       healthTags: ["irregular_diet"],
       todayMood: "calm",
       tongueDiagnosis: null
+    },
+    dailySupplement: {
+      headSense: "slightly_full",
+      sleepDuration: "medium",
+      tongueCoating: "thick_white"
     }
   },
   {
@@ -60,6 +73,11 @@ const SAMPLE_CASES: SampleCase[] = [
       healthTags: ["late_sleep", "sedentary"],
       todayMood: "tired",
       tongueDiagnosis: null
+    },
+    dailySupplement: {
+      headSense: "slightly_full",
+      sleepDuration: "short",
+      tongueCoating: "thin_white"
     }
   },
   {
@@ -71,6 +89,11 @@ const SAMPLE_CASES: SampleCase[] = [
       healthTags: ["late_sleep"],
       todayMood: "tired",
       tongueDiagnosis: null
+    },
+    dailySupplement: {
+      headSense: "clear",
+      sleepDuration: "short",
+      tongueCoating: "thick_white"
     }
   },
   {
@@ -82,6 +105,11 @@ const SAMPLE_CASES: SampleCase[] = [
       healthTags: ["late_sleep", "irregular_diet"],
       todayMood: "anxious",
       tongueDiagnosis: null
+    },
+    dailySupplement: {
+      headSense: "rising",
+      sleepDuration: "short",
+      tongueCoating: "slightly_yellow"
     }
   },
   {
@@ -93,6 +121,11 @@ const SAMPLE_CASES: SampleCase[] = [
       healthTags: [],
       todayMood: "anxious",
       tongueDiagnosis: null
+    },
+    dailySupplement: {
+      headSense: "rising",
+      sleepDuration: "medium",
+      tongueCoating: "thin_white"
     }
   },
   {
@@ -104,6 +137,11 @@ const SAMPLE_CASES: SampleCase[] = [
       healthTags: ["irregular_diet"],
       todayMood: "sad",
       tongueDiagnosis: null
+    },
+    dailySupplement: {
+      headSense: "clear",
+      sleepDuration: "medium",
+      tongueCoating: "thick_white"
     }
   },
   {
@@ -115,6 +153,11 @@ const SAMPLE_CASES: SampleCase[] = [
       healthTags: ["late_sleep"],
       todayMood: "angry",
       tongueDiagnosis: null
+    },
+    dailySupplement: {
+      headSense: "rising",
+      sleepDuration: "short",
+      tongueCoating: "slightly_yellow"
     }
   },
   {
@@ -126,6 +169,11 @@ const SAMPLE_CASES: SampleCase[] = [
       healthTags: ["regular_exercise"],
       todayMood: "happy",
       tongueDiagnosis: null
+    },
+    dailySupplement: {
+      headSense: "clear",
+      sleepDuration: "long",
+      tongueCoating: "thin_white"
     }
   },
   {
@@ -137,6 +185,11 @@ const SAMPLE_CASES: SampleCase[] = [
       healthTags: ["sedentary"],
       todayMood: "happy",
       tongueDiagnosis: null
+    },
+    dailySupplement: {
+      headSense: "slightly_full",
+      sleepDuration: "medium",
+      tongueCoating: "thick_white"
     }
   }
 ];
@@ -159,6 +212,7 @@ function buildPayload(sample: SampleCase): GenerateRequestPayload {
     pressDurationMs: sample.pressDurationMs,
     touchEntropy: sample.touchEntropy,
     userProfile: sample.userProfile,
+    dailySupplement: sample.dailySupplement,
     context: {
       timestamp: FIXED_EVAL_TIMESTAMP,
       timezone: "Asia/Shanghai"
@@ -246,7 +300,8 @@ async function selectKnowledgeForMode(
     solarTermKey: calendar.solarTermKey,
     constitution: sample.userProfile.constitution,
     mood: sample.userProfile.todayMood,
-    healthTags: sample.userProfile.healthTags
+    healthTags: sample.userProfile.healthTags,
+    dailySupplement: sample.dailySupplement
   };
 
   if (mode === "rules") {
@@ -319,7 +374,13 @@ async function evaluateMode(
       payload.context.timestamp,
       payload.touchEntropy ?? 0
     );
-    const fallback = buildFallbackResult(calendar, hexagram, selection.entries, payload.userProfile);
+    const fallback = buildFallbackResult(
+      calendar,
+      hexagram,
+      selection.entries,
+      payload.userProfile,
+      payload.dailySupplement
+    );
 
     const fallbackQuality = summarizeQuality(fallback, selection);
     fallbackBatch.push({

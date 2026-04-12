@@ -1,5 +1,6 @@
 import { loadDevEnv } from "../src/server/env";
 import { generateTianji } from "../src/server/generate-service";
+import { defaultDailySupplement } from "../src/shared/supplement";
 import type { GenerateRequestPayload } from "../src/types";
 
 function buildPayload(): GenerateRequestPayload {
@@ -13,6 +14,7 @@ function buildPayload(): GenerateRequestPayload {
       todayMood: "calm",
       tongueDiagnosis: null
     },
+    dailySupplement: defaultDailySupplement,
     context: {
       timestamp: Date.now(),
       timezone: "Asia/Shanghai"
