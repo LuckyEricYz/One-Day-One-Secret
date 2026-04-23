@@ -55,6 +55,36 @@ export type HeadSense = (typeof HEAD_SENSE_OPTIONS)[number];
 export type SleepDuration = (typeof SLEEP_DURATION_OPTIONS)[number];
 export type TongueCoating = (typeof TONGUE_COATING_OPTIONS)[number];
 
+export const ROLE_IDS = ["male", "female"] as const;
+export const ROLE_PREFERENCE_TAGS = [
+  "desk_relief",
+  "mobility",
+  "warmth",
+  "calm",
+  "digestive_balance",
+  "sleep_regulation"
+] as const;
+export const SEASONS = ["spring", "summer", "autumn", "winter"] as const;
+
+export type RoleId = (typeof ROLE_IDS)[number];
+export type RolePreferenceTag = (typeof ROLE_PREFERENCE_TAGS)[number];
+export type Season = (typeof SEASONS)[number];
+
+export type RolePreset = {
+  id: RoleId;
+  genderLabel: string;
+  label: string;
+  seal: string;
+  roleSeed: number;
+  intro: string;
+  baseStatus: string[];
+  baziSummary: string;
+  annualFocus: string[];
+  annualAvoids: string[];
+  emotionTraits: string[];
+  contentTags: RolePreferenceTag[];
+};
+
 export type UserProfile = {
   constitution: Constitution;
   healthTags: HealthTag[];
@@ -82,6 +112,79 @@ export type CalendarContext = {
   solarTermStage: "start" | "middle" | "end";
   ganZhiSummary: string;
   dateKey: string;
+};
+
+export type DailyHexagram = {
+  index: number;
+  key: string;
+  name: string;
+  lines: number[];
+  upperTrigram: string;
+  lowerTrigram: string;
+  image: string;
+  theme: string;
+  focusTags: string[];
+  avoidTags: string[];
+  headline: string;
+  guidance: string;
+  advice: string[];
+  cautions: string[];
+};
+
+export type ExerciseItem = {
+  id: string;
+  name: string;
+  scene: "办公室" | "居家";
+  duration: string;
+  benefit: string;
+  steps: string[];
+  note: string;
+  tags: RolePreferenceTag[];
+  seasons: Season[];
+};
+
+export type AcupointItem = {
+  id: string;
+  name: string;
+  location: string;
+  method: string;
+  duration: string;
+  reason: string;
+  tags: RolePreferenceTag[];
+  seasons: Season[];
+};
+
+export type RecipeItem = {
+  id: string;
+  solarTermKeys: string[];
+  name: string;
+  description: string;
+  ingredients: string[];
+  steps: string[];
+  benefit: string;
+  tags: RolePreferenceTag[];
+};
+
+export type DailySnapshot = {
+  id: string;
+  roleId: RoleId;
+  dateKey: string;
+  generatedAt: string;
+  calendar: CalendarContext;
+  seasonalSummary: string;
+  roleDigest: string;
+  hexagram: DailyHexagram;
+  exercises: ExerciseItem[];
+  acupoint: AcupointItem;
+  recipe: RecipeItem;
+};
+
+export type HistoryEntryV2 = {
+  id: string;
+  roleId: RoleId;
+  dateKey: string;
+  savedAt: string;
+  snapshot: DailySnapshot;
 };
 
 export type HexagramContext = {

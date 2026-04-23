@@ -1,77 +1,67 @@
 # 一日天机
 
-> 一个以“粒子成卦 + 纸本天机卡”为核心体验的节气生活方式应用。
+> 一个纯本地运行的极简养生 Web/H5 应用：固定双角色、每日一卦、四块一站式调理面板。
 
-## 项目定位
+## 当前版本定位
 
-「一日天机」不是算命工具，也不是健康诊断产品。它把节气语境、轻量个体信息和知识检索结果折成一张可分享的“今日避坑指南”。
+当前版本不再走问卷、成卦仪式或 AI 生成链路，主流程固定为：
 
-当前输出固定为：
+1. 首次进入选择固定男 / 女角色
+2. 自动弹出今日卦象弹窗
+3. 首页直接查看 4 个模块
+4. 每天按 `Asia/Shanghai` 自然日自动更新内容
 
-- 1 句判词
-- 1 段白话解释
-- 3 条可执行建议
-- 2 组宜忌
+首页固定展示：
 
-## 当前主链路
+- 当日一卦
+- 带薪健身
+- 每日穴位
+- 节气食谱
 
-1. 首次进入完成 5 题问卷，生成长期画像
-2. 当日选择 1 个情绪状态
-3. Web 点击 / H5 长按粒子球，让混沌成卦
-4. 即时显示卦象与一句天机语
-5. 完成 3 题当日补录
-6. 生成融合节气、卦象与知识库的“一日天机卡”
-7. 保存长图或查看历史
+产品口径：
 
-## 当前约束
-
-- 不提供疾病诊断、治疗建议、药物或保健品推荐
-- 不做舌诊拍照识别
-- 不做账号体系和跨设备同步
-- 不做长期趋势分析
+- 纯本地规则化，默认离线可用
+- 不提供医疗诊断、治疗方案、药物或保健品推荐
+- 不做账号、同步、问卷、长图保存和每日额度
+- 保留本地历史快照，每个角色每天 1 条
 
 ## 技术口径
 
 - 前端：Vite + React
 - 样式：Tailwind CSS + CSS 变量
-- 动画：Framer Motion + 轻量 canvas
-- API：`POST /api/generate`
-- 默认检索：`hybrid`，不可用时自动回退 `rules`
-- 默认模型路径：OpenAI，失败后回本地 fallback
+- 内容生成：角色预设 + 上海日期 + 节气规则 + 本地内容池
 - 存储：`LocalStorage`
+- 运行时默认不依赖 `/api/generate`、模型密钥或知识库构建
 
-## 本地联调
+仓库中仍保留旧的服务端 AI 生成实验代码，但它不是当前版本的默认主链路。
+
+## 本地开发
 
 ```bash
-cp .env.example .env.local
-# 编辑 .env.local 填入真实密钥
-
+pnpm install
 pnpm dev
 pnpm typecheck
-pnpm test:quality
+pnpm test:daily-rules
 pnpm build
-AI_PROVIDER=fallback pnpm smoke
-RAG_RETRIEVAL_MODE=hybrid AI_PROVIDER=fallback pnpm smoke
 ```
 
-说明：
+如需查看旧的服务端生成实验，可单独执行：
 
-- `.env.local` 提供默认值，命令行环境变量会覆盖同名配置
-- `AI_PROVIDER` 支持 `auto`、`openai`、`kimi`、`gemini`、`fallback`
-- `RAG_RETRIEVAL_MODE` 支持 `hybrid`、`rules`，默认使用 `hybrid`
-- `pnpm build:knowledge-index` 会按 `embedding -> chat signature -> mock hash` 顺序构建索引
+```bash
+pnpm test:quality
+pnpm smoke
+```
 
 ## 文档入口
 
 - [项目总览](./docs/project-overview.md)
 - [文档中心](./docs/README.md)
-- [API 规范](./docs/phase-1/api-spec.md)
 - [交互流程](./docs/phase-2/interaction-flow.md)
 - [视觉规范](./docs/phase-2/design-system.md)
-- [隐私政策](./docs/phase-3/privacy-policy.md)
+- [性能策略](./docs/phase-2/performance.md)
 
-## 文档维护规则
+## 维护规则
 
-- 只保留当前实现口径，不保留互相冲突的旧流程
-- 阶段文档优先服务实现，不写无法落地的伪规格
-- 后续规划必须明确标注为“非当前版本”
+- 文档只保留当前实现口径，不保留互相冲突的旧流程
+- “当前版本”默认指双角色纯本地版，不指旧的 AI 生成实验
+- 任何新增角色字段、存储键或内容模块，都要同步更新文档和测试

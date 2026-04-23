@@ -9,12 +9,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "smoke": "node --import tsx server/smoke.ts",
+    "test:daily-rules": "node --import tsx server/test-daily-rules.ts",
     "build:knowledge-index": "node --import tsx server/build-knowledge-index.ts",
     "eval:generate": "node --import tsx server/evaluate-generation.ts",
     "test:quality": "node --import tsx server/test-quality.ts",
     "ship": "node scripts/ship-issue.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "check": "pnpm typecheck && pnpm test:quality && pnpm build"
+    "check": "pnpm typecheck && pnpm test:daily-rules && pnpm build"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.11",

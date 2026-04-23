@@ -1,42 +1,34 @@
 # 一日天机文档中心
 
-> 当前文档分为两类：MVP 现行规格、后续升级规划。
+> 当前文档分为两类：现行产品规格、保留中的旧实验资料。
 
-## MVP 现行规格
-
-| 文档 | 用途 | 状态 |
-|:-----|:-----|:-----|
-| [project-overview.md](./project-overview.md) | 产品定位、技术口径、统一决策 | ✅ 已收敛 |
-| [phase-1/api-spec.md](./phase-1/api-spec.md) | 请求/响应结构、错误码、限额规则 | ✅ 已收敛 |
-| [phase-1/algorithm.md](./phase-1/algorithm.md) | 节气上下文、起卦和生成上下文规则 | ✅ 已收敛 |
-| [phase-1/knowledge-base-spec.md](./phase-1/knowledge-base-spec.md) | 本地知识条目格式与检索规则 | ✅ 已收敛 |
-| [phase-1/prompt-tuning.md](./phase-1/prompt-tuning.md) | Prompt、安全边界与兜底策略 | ✅ 已收敛 |
-| [phase-2/interaction-flow.md](./phase-2/interaction-flow.md) | MVP 用户链路、问卷和本地状态流转 | ✅ 已收敛 |
-| [phase-2/design-system.md](./phase-2/design-system.md) | MVP 视觉约束与核心组件规范 | ✅ 已收敛 |
-| [phase-2/performance.md](./phase-2/performance.md) | MVP 性能目标与降级策略 | ✅ 已收敛 |
-| [phase-2/deployment.md](./phase-2/deployment.md) | 部署与运维说明 | 📋 待实施 |
-
-## 后续升级规划
+## 现行规格
 
 | 文档 | 用途 | 状态 |
 |:-----|:-----|:-----|
-| [phase-3/data-storage.md](./phase-3/data-storage.md) | 本地存储现状与未来同步升级方向 | 🧭 规划中 |
-| [phase-3/rag-architecture.md](./phase-3/rag-architecture.md) | 实验性 Hybrid RAG 的启用方式与边界 | 🛠 实验版 |
-| [phase-3/rag-experiment-log.md](./phase-3/rag-experiment-log.md) | 本轮 Hybrid RAG 的操作路径、实验步骤与结论 | 📝 记录中 |
-| [phase-3/tongue-diagnosis.md](./phase-3/tongue-diagnosis.md) | 舌象输入升级路线 | 🧭 规划中 |
-| [phase-3/privacy-policy.md](./phase-3/privacy-policy.md) | MVP 隐私承诺与后续能力边界 | ✅ 已收敛 |
+| [project-overview.md](./project-overview.md) | 产品定位、技术口径、统一决策 | ✅ 当前版本 |
+| [phase-1/api-spec.md](./phase-1/api-spec.md) | 当前版本的本地接口与持久化边界 | ✅ 当前版本 |
+| [phase-1/algorithm.md](./phase-1/algorithm.md) | 双角色纯本地生成规则 | ✅ 当前版本 |
+| [phase-2/interaction-flow.md](./phase-2/interaction-flow.md) | 角色选择、弹窗、首页、历史流程 | ✅ 当前版本 |
+| [phase-2/design-system.md](./phase-2/design-system.md) | 纸本留白视觉约束与组件规范 | ✅ 当前版本 |
+| [phase-2/performance.md](./phase-2/performance.md) | 当前版本性能目标与降级策略 | ✅ 当前版本 |
+| [phase-3/privacy-policy.md](./phase-3/privacy-policy.md) | 隐私边界与非医疗口径 | ✅ 当前版本 |
+
+## 保留资料
+
+以下文档对应旧的 AI / RAG 实验链路，仓库保留资料，但不代表当前版本默认能力：
+
+- [phase-1/knowledge-base-spec.md](./phase-1/knowledge-base-spec.md)
+- [phase-1/prompt-tuning.md](./phase-1/prompt-tuning.md)
+- [phase-3/data-storage.md](./phase-3/data-storage.md)
+- [phase-3/rag-architecture.md](./phase-3/rag-architecture.md)
+- [phase-3/rag-experiment-log.md](./phase-3/rag-experiment-log.md)
+- [phase-3/tongue-diagnosis.md](./phase-3/tongue-diagnosis.md)
 
 ## 当前统一口径
 
-- 产品类型：生活方式建议应用，不做医疗诊断
-- 当前主链路：先显卦与天机语，再补录，最后生成终极卡
-- 默认模型路径：OpenAI，失败后回本地 fallback
-- 默认检索：`hybrid`，不可用时回退 `rules`
-- MVP 限额：每日 5 次，`Asia/Shanghai` 零点重置
-- MVP 本地键：`tianji_client_id`、`tianji_profile`、`tianji_history`、`tianji_quota`
-
-## 维护规则
-
-- 文档一旦出现冲突，以 `project-overview.md` 和 `api-spec.md` 为准
-- 后续规划不得回写成“当前已实现”
-- 任何新增输入字段，必须同步更新 API、存储和隐私文档
+- 当前主链路：固定双角色 + 今日卦象弹窗 + 首页四模块
+- 内容来源：纯本地规则化，不依赖实时网络或模型调用
+- 本地键：`tianji_v2_role_id`、`tianji_v2_history`、`tianji_v2_modal_seen`
+- 历史规则：每个角色每天 1 条快照
+- 旧服务端生成链路仅作为保留实验，不是现行主链路
