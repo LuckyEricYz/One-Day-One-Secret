@@ -1,15 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --color-page-bg: #f9cd4a;
-  --color-paper: #fff8df;
-  --color-paper-deep: #ffe9a7;
+  --color-page-bg: #f5c95c;
+  --color-paper: #fffbea;
+  --color-paper-deep: #ffedb7;
   --color-paper-shadow: rgba(111, 59, 20, 0.16);
   --color-ink: #241b14;
   --color-muted: #6f6252;
   --color-vermillion: #d9542d;
   --color-gold: #f0aa1d;
   --color-positive: #587047;
+  --color-health: #6f9f68;
+  --color-health-deep: #3f6f46;
+  --color-health-soft: rgba(111, 159, 104, 0.1);
+  --color-health-line: rgba(111, 159, 104, 0.24);
   --color-negative: #9a503d;
   --color-line: rgba(117, 64, 26, 0.42);
   --color-border-strong: #8a4b1d;
@@ -29,7 +33,7 @@ body {
   background:
     linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
     linear-gradient(180deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
-    linear-gradient(180deg, #ffe57d 0%, #ffd358 44%, #f6be35 100%);
+    linear-gradient(180deg, #ffeaa0 0%, #f8d06c 48%, #efba3f 100%);
   background-size:
     22px 22px,
     22px 22px,
@@ -62,8 +66,8 @@ body::before {
 
 body::after {
   background:
-    linear-gradient(180deg, rgba(255, 244, 174, 0.32), rgba(255, 214, 86, 0.08));
-  opacity: 0.72;
+    linear-gradient(180deg, rgba(255, 249, 204, 0.42), rgba(255, 224, 120, 0.1));
+  opacity: 0.68;
   animation: ambientPulse 18s ease-in-out infinite alternate;
 }
 
@@ -296,9 +300,9 @@ button {
 }
 
 .signal-chip--good {
-  border: 1px solid rgba(182, 72, 50, 0.18);
-  background: rgba(182, 72, 50, 0.08);
-  color: var(--color-vermillion);
+  border: 1px solid var(--color-health-line);
+  background: var(--color-health-soft);
+  color: var(--color-health-deep);
 }
 
 .signal-chip--warn {
@@ -571,13 +575,15 @@ button {
 
 .role-card__avatar {
   position: relative;
-  width: min(78%, 25rem);
+  width: min(72%, 21rem);
   aspect-ratio: 1;
   display: grid;
   place-items: center;
   overflow: hidden;
   border-radius: 44px;
-  background: radial-gradient(circle at 50% 76%, rgba(229, 168, 54, 0.2), transparent 32%);
+  background:
+    radial-gradient(circle at 50% 76%, rgba(229, 168, 54, 0.16), transparent 34%),
+    rgba(255, 255, 255, 0.08);
 }
 
 .role-card__avatar video {
@@ -586,16 +592,15 @@ button {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  transform-origin: center center;
 }
 
-.role-card__avatar-fallback {
-  position: absolute;
-  inset: auto 0 12%;
-  z-index: 0;
-  margin: auto;
-  font-size: clamp(2.4rem, 6vw, 5rem);
-  font-weight: 800;
-  color: rgba(117, 64, 26, 0.18);
+.role-card__avatar--role_a video {
+  transform: scale(1.84) translateY(2%);
+}
+
+.role-card__avatar--role_b video {
+  transform: scale(0.72) translateY(1%);
 }
 
 .role-card__name {
@@ -969,6 +974,10 @@ button {
 
 .service-card--exercise {
   min-height: 28rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.28)),
+    linear-gradient(135deg, rgba(111, 159, 104, 0.08), transparent 42%),
+    #fffbea;
 }
 
 .fitness-media-grid {
@@ -981,10 +990,10 @@ button {
 .fitness-media-card {
   position: relative;
   overflow: hidden;
-  border: 3px solid rgba(117, 64, 26, 0.34);
+  border: 3px solid var(--color-health-line);
   border-radius: 28px;
   aspect-ratio: 4 / 3;
-  background: #fff2ba;
+  background: #f8f3cf;
 }
 
 .fitness-media-card video {
@@ -998,11 +1007,11 @@ button {
   left: 0.65rem;
   bottom: 0.65rem;
   max-width: calc(100% - 1.3rem);
-  border: 2px solid rgba(117, 64, 26, 0.28);
+  border: 2px solid var(--color-health-line);
   border-radius: 999px;
-  background: rgba(255, 253, 235, 0.82);
+  background: rgba(247, 255, 237, 0.84);
   padding: 0.28rem 0.62rem;
-  color: var(--color-ink);
+  color: var(--color-health-deep);
   font-size: 0.78rem;
   font-weight: 700;
 }
@@ -1036,8 +1045,8 @@ button {
   width: 1.9rem;
   height: 1.9rem;
   border-radius: 999px;
-  background: rgba(182, 72, 50, 0.08);
-  color: var(--color-vermillion);
+  background: var(--color-health-soft);
+  color: var(--color-health-deep);
 }
 
 .modal-overlay {
@@ -1316,7 +1325,7 @@ button {
   }
 
   .role-card__avatar {
-    width: min(82%, 18rem);
+    width: min(76%, 17rem);
   }
 
   .role-card__info,

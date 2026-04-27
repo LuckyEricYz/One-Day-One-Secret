@@ -439,7 +439,7 @@ function RolePage(props: {
                 <div className="role-card__status">
                   {isSelected ? "默认角色" : isPending ? "确认中" : "可选择"}
                 </div>
-                <div className="role-card__avatar" aria-hidden="true">
+                <div className={`role-card__avatar role-card__avatar--${role.id}`} aria-hidden="true">
                   <video
                     autoPlay
                     loop
@@ -449,7 +449,6 @@ function RolePage(props: {
                     poster={role.avatarPosterSrc}
                     src={role.avatarVideoSrc}
                   />
-                  <span className="role-card__avatar-fallback">{role.shortLabel}</span>
                 </div>
                 <span className="sr-only">{role.avatarAlt}</span>
 
