@@ -46,6 +46,19 @@ const FITNESS_MEDIA = [
 
 const BODY_RHYTHM_URL = "https://life-curve-deploy.vercel.app/";
 
+const PROFILE_AVATAR_MEDIA: Record<Gender, { src: string; poster: string; label: string }> = {
+  male: {
+    src: "/roles/role_a.webm",
+    poster: "/roles/role_a-poster.webp",
+    label: "男生资料头像"
+  },
+  female: {
+    src: "/roles/role_b.webm",
+    poster: "/roles/role_b-poster.webp",
+    label: "女生资料头像"
+  }
+};
+
 const BIRTH_HOUR_OPTIONS: Array<{ value: BirthHourBranch; label: string }> = [
   { value: "zi", label: "子时 23:00-00:59" },
   { value: "chou", label: "丑时 01:00-02:59" },
@@ -822,6 +835,25 @@ function getGenderLabel(gender: Gender): string {
   return gender === "male" ? "男" : "女";
 }
 
+function ProfileAvatar(props: { gender: Gender; className?: string }) {
+  const media = PROFILE_AVATAR_MEDIA[props.gender];
+
+  return (
+    <span className={`profile-avatar profile-avatar--${props.gender} ${props.className ?? ""}`.trim()}>
+      <video
+        aria-label={media.label}
+        autoPlay
+        loop
+        muted
+        playsInline
+        poster={media.poster}
+        preload="metadata"
+        src={media.src}
+      />
+    </span>
+  );
+}
+
 function RhythmPanel(props: {
   snapshot: DailySnapshot;
 }) {
@@ -879,7 +911,7 @@ function ProfileRail(props: {
     <aside className="paper-panel role-rail">
       <div className="role-rail__header">
         <span className="role-rail__eyebrow">资料摘要</span>
-        <span className="seal-stamp role-rail__seal">本</span>
+        <ProfileAvatar gender={props.profile.gender} className="role-rail__avatar" />
       </div>
 
       <div>
@@ -932,7 +964,7 @@ function ProfileMobileAccordion(props: {
     <section className="paper-panel role-mobile-card lg:hidden">
       <button className="role-mobile-card__toggle" onClick={props.onToggle} type="button">
         <div className="flex items-center gap-3">
-          <span className="seal-stamp role-mobile-card__seal">本</span>
+          <ProfileAvatar gender={props.profile.gender} className="role-mobile-card__avatar" />
           <div className="text-left">
             <p className="text-xs uppercase tracking-[0.24em] text-[color:var(--color-muted)]">
               资料摘要
