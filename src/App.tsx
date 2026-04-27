@@ -1,20 +1,25 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
 
 import { HexagramGlyph } from "./components/HexagramGlyph";
 import { buildDailySnapshot } from "./shared/daily";
-import { ROLE_PRESET_MAP, ROLE_PRESETS } from "./shared/roles";
 import {
-  ensureCurrentRoleStorageSchema,
-  getStoredHistoryV2,
-  getStoredRoleId,
+  ensureCurrentProfileStorageSchema,
+  getStoredHistoryV3,
+  getStoredProfileV3,
   isDailyModalSeen,
   markDailyModalSeen,
-  saveStoredRoleId,
+  saveStoredProfileV3,
   upsertStoredHistoryEntry
-} from "./shared/storage-v2";
+} from "./shared/storage-v3";
 import { formatDateTime, getNextShanghaiMidnightIso } from "./shared/time";
-import type { DailySnapshot, HistoryEntryV2, RoleId, RolePreset } from "./types";
+import type {
+  BirthHourBranch,
+  DailySnapshot,
+  Gender,
+  HistoryEntryV3,
+  StoredUserProfileV3
+} from "./types";
 
 type AppRoute = "/" | "/role";
 
@@ -38,6 +43,23 @@ const FITNESS_MEDIA = [
     poster: "/health/health-4-poster.webp"
   }
 ] as const;
+
+const BODY_RHYTHM_URL = "https://life-curve-deploy.vercel.app/";
+
+const BIRTH_HOUR_OPTIONS: Array<{ value: BirthHourBranch; label: string }> = [
+  { value: "zi", label: "子时 23:00-00:59" },
+  { value: "chou", label: "丑时 01:00-02:59" },
+  { value: "yin", label: "寅时 03:00-04:59" },
+  { value: "mao", label: "卯时 05:00-06:59" },
+  { value: "chen", label: "辰时 07:00-08:59" },
+  { value: "si", label: "巳时 09:00-10:59" },
+  { value: "wu", label: "午时 11:00-12:59" },
+  { value: "wei", label: "未时 13:00-14:59" },
+  { value: "shen", label: "申时 15:00-16:59" },
+  { value: "you", label: "酉时 17:00-18:59" },
+  { value: "xu", label: "戌时 19:00-20:59" },
+  { value: "hai", label: "亥时 21:00-22:59" }
+];
 
 function readRoutePath(): AppRoute {
   if (typeof window === "undefined") {
@@ -94,24 +116,16 @@ const modalRevealVariants = {
 };
 
 export default function App() {
-  const transitionTimersRef = useRef<number[]>([]);
   const [routePath, setRoutePath] = useState<AppRoute>(() => readRoutePath());
   const [ready, setReady] = useState(false);
-  const [roleId, setRoleId] = useState<RoleId | null>(null);
-  const [pendingRoleId, setPendingRoleId] = useState<RoleId | null>(null);
-  const [isRoleTransitioning, setIsRoleTransitioning] = useState(false);
+  const [profile, setProfile] = useState<StoredUserProfileV3 | null>(null);
   const [homeRevealKey, setHomeRevealKey] = useState(0);
-  const [history, setHistory] = useState<HistoryEntryV2[]>([]);
+  const [history, setHistory] = useState<HistoryEntryV3[]>([]);
   const [snapshot, setSnapshot] = useState<DailySnapshot | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isHexagramOpen, setIsHexagramOpen] = useState(false);
   const [selectedHistoryId, setSelectedHistoryId] = useState<string | null>(null);
   const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
-
-  function clearTransitionTimers() {
-    transitionTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-    transitionTimersRef.current = [];
-  }
 
   function navigateToRoute(path: AppRoute, mode: "push" | "replace" = "push") {
     if (typeof window !== "undefined" && window.location.pathname !== path) {
@@ -123,9 +137,9 @@ export default function App() {
   }
 
   useEffect(() => {
-    ensureCurrentRoleStorageSchema();
-    setRoleId(getStoredRoleId());
-    const nextHistory = getStoredHistoryV2();
+    ensureCurrentProfileStorageSchema();
+    setProfile(getStoredProfileV3());
+    const nextHistory = getStoredHistoryV3();
     setHistory(nextHistory);
     setSelectedHistoryId(nextHistory[0]?.id ?? null);
     setReady(true);
@@ -151,14 +165,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    return () => clearTransitionTimers();
-  }, []);
-
-  useEffect(() => {
-    if (ready && !roleId && !pendingRoleId && routePath === "/") {
+    if (ready && !profile && routePath === "/") {
       navigateToRoute("/role", "replace");
     }
-  }, [pendingRoleId, ready, roleId, routePath]);
+  }, [profile, ready, routePath]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -186,15 +196,15 @@ export default function App() {
   }, [nowTimestamp]);
 
   useEffect(() => {
-    if (!roleId) {
+    if (!profile) {
       setSnapshot(null);
       setIsHexagramOpen(false);
       return;
     }
 
-    const nextSnapshot = buildDailySnapshot(roleId, nowTimestamp);
+    const nextSnapshot = buildDailySnapshot(profile, nowTimestamp);
     const nextHistory = upsertStoredHistoryEntry(nextSnapshot);
-    const modalKey = `${roleId}:${nextSnapshot.dateKey}`;
+    const modalKey = `${nextSnapshot.profileHash}:${nextSnapshot.dateKey}`;
 
     setSnapshot(nextSnapshot);
     setHistory(nextHistory);
@@ -205,47 +215,20 @@ export default function App() {
         : nextSnapshot.id
     );
     setIsHexagramOpen(!isDailyModalSeen(modalKey));
-  }, [nowTimestamp, roleId]);
+  }, [nowTimestamp, profile]);
 
-  function handleSelectRole(nextRoleId: RoleId) {
-    if (nextRoleId === pendingRoleId) {
-      return;
-    }
-
-    saveStoredRoleId(nextRoleId);
-    clearTransitionTimers();
+  function handleSaveProfile(nextProfile: StoredUserProfileV3) {
+    saveStoredProfileV3(nextProfile);
     setIsHistoryOpen(false);
     setIsHexagramOpen(false);
+    setProfile(nextProfile);
+    setNowTimestamp(Date.now());
     navigateToRoute("/", "push");
-
-    if (nextRoleId === roleId) {
-      setPendingRoleId(null);
-      setIsRoleTransitioning(false);
-      setNowTimestamp(Date.now());
-      return;
-    }
-
-    setPendingRoleId(nextRoleId);
-    setIsRoleTransitioning(true);
-
-    transitionTimersRef.current.push(
-      window.setTimeout(() => {
-        setRoleId(nextRoleId);
-        setNowTimestamp(Date.now());
-      }, 260)
-    );
-
-    transitionTimersRef.current.push(
-      window.setTimeout(() => {
-        setPendingRoleId(null);
-        setIsRoleTransitioning(false);
-      }, 700)
-    );
   }
 
   function handleCloseHexagram() {
     if (snapshot) {
-      markDailyModalSeen(`${snapshot.roleId}:${snapshot.dateKey}`);
+      markDailyModalSeen(`${snapshot.profileHash}:${snapshot.dateKey}`);
     }
 
     setIsHexagramOpen(false);
@@ -261,27 +244,22 @@ export default function App() {
 
   const selectedHistory =
     history.find((entry) => entry.id === selectedHistoryId) ?? history[0] ?? null;
-  const activeRole = roleId ? ROLE_PRESET_MAP[roleId] : null;
-  const transitionRole =
-    (pendingRoleId && ROLE_PRESET_MAP[pendingRoleId]) ?? (activeRole ? activeRole : null);
-  const isRolePage = routePath === "/role" || !activeRole || !snapshot;
+  const isProfilePage = routePath === "/role" || !profile || !snapshot;
 
   return (
-    <div className={`relative min-h-dvh overflow-x-hidden px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-6 sm:px-6 lg:px-8 ${isRolePage ? "app-shell--role" : ""}`}>
+    <div className={`relative min-h-dvh overflow-x-hidden px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-6 sm:px-6 lg:px-8 ${isProfilePage ? "app-shell--role" : ""}`}>
       <div className="paper-wash paper-wash--one" aria-hidden="true" />
       <div className="paper-wash paper-wash--two" aria-hidden="true" />
       <div className="page-grain" aria-hidden="true" />
 
       <div className="mx-auto flex min-h-[calc(100dvh-48px)] w-full max-w-7xl flex-col">
-        {isRolePage ? (
-          <RolePage
-            currentRoleId={roleId}
-            isBusy={isRoleTransitioning}
-            pendingRoleId={pendingRoleId}
+        {isProfilePage ? (
+          <ProfilePage
+            currentProfile={profile}
             onGoHome={() => navigateToRoute("/", "push")}
-            onSelectRole={handleSelectRole}
+            onSaveProfile={handleSaveProfile}
           />
-        ) : activeRole && snapshot ? (
+        ) : profile && snapshot ? (
           <>
             <Header
               calendarLabel={snapshot.calendar.dateKey.replaceAll("-", ".")}
@@ -301,7 +279,7 @@ export default function App() {
             >
               <Dashboard
                 homeRevealKey={homeRevealKey}
-                role={activeRole}
+                profile={profile}
                 snapshot={snapshot}
                 onOpenRolePage={() => navigateToRoute("/role", "push")}
                 onReopenHexagram={() => setIsHexagramOpen(true)}
@@ -312,16 +290,9 @@ export default function App() {
       </div>
 
       <AnimatePresence>
-        {transitionRole && isRoleTransitioning ? (
-          <RoleTransitionCurtain key={`transition-${transitionRole.id}`} role={transitionRole} />
-        ) : null}
-      </AnimatePresence>
-
-      <AnimatePresence>
         {routePath === "/" && snapshot && isHexagramOpen ? (
           <HexagramModal
             key={`modal-${snapshot.id}`}
-            role={ROLE_PRESET_MAP[snapshot.roleId]}
             snapshot={snapshot}
             onClose={handleCloseHexagram}
           />
@@ -354,17 +325,46 @@ function Header(props: {
   onOpenHistory: () => void;
   onOpenRolePage: () => void;
 }) {
+  function handleSectionNav(event: MouseEvent<HTMLAnchorElement>, sectionId: string) {
+    event.preventDefault();
+
+    const target = document.getElementById(sectionId);
+    if (!target) {
+      return;
+    }
+
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.history.replaceState({}, "", `#${sectionId}`);
+  }
+
   return (
     <header className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
       <div className="max-w-3xl">
         <p className="text-xs uppercase tracking-[0.34em] text-[color:var(--color-muted)]">
           One Day One Secret
         </p>
+        <nav className="app-nav" aria-label="首页模块">
+          <a
+            className="app-nav__link app-nav__link--active"
+            href="#daily-wellness"
+            onClick={(event) => handleSectionNav(event, "daily-wellness")}
+          >
+            今日养生
+          </a>
+          <a
+            className="app-nav__link"
+            href={BODY_RHYTHM_URL}
+            rel="noreferrer"
+            target="_blank"
+          >
+            身体节律
+          </a>
+        </nav>
         <h1 className="serif-title mt-3 text-[clamp(2.8rem,7vw,5.6rem)] leading-[0.92] tracking-[0.03em]">
-          双角色每日养生
+          今日养生
         </h1>
         <p className="mt-4 max-w-2xl text-sm leading-7 text-[color:var(--color-muted)] sm:text-[15px]">
-          今日以一卦定节律，再用动作、穴位与食谱把身心稳稳收回来。
+          每天按节气、卦象与当前状态，整理一页可执行的动作、穴位、饮食和节律提醒。
         </p>
       </div>
 
@@ -372,7 +372,7 @@ function Header(props: {
         <ToolChip>{props.solarTermName}</ToolChip>
         <ToolChip>{props.calendarLabel}</ToolChip>
         <button className="tool-button" onClick={props.onOpenRolePage} type="button">
-          切换角色
+          修改资料
         </button>
         <button className="tool-button" onClick={props.onOpenHistory} type="button">
           历史快照 {props.historyCount > 0 ? `(${props.historyCount})` : ""}
@@ -382,13 +382,105 @@ function Header(props: {
   );
 }
 
-function RolePage(props: {
-  currentRoleId: RoleId | null;
-  pendingRoleId: RoleId | null;
-  isBusy: boolean;
+function createProfileFormState(profile: StoredUserProfileV3 | null) {
+  return {
+    gender: profile?.gender ?? "",
+    birthDate: profile?.birthDate ?? "",
+    birthHourBranch: profile?.birthHourBranch ?? "",
+    birthPlace: profile?.birthPlace ?? "",
+    currentPlace: profile?.currentPlace ?? ""
+  };
+}
+
+function isProfileFormValid(form: ReturnType<typeof createProfileFormState>) {
+  return (
+    (form.gender === "male" || form.gender === "female") &&
+    Boolean(normalizeBirthDateInput(form.birthDate)) &&
+    form.birthPlace.trim().length > 0 &&
+    form.currentPlace.trim().length > 0
+  );
+}
+
+function padDatePart(value: string): string {
+  return value.padStart(2, "0");
+}
+
+function isRealCalendarDate(year: number, month: number, day: number): boolean {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+}
+
+function normalizeBirthDateInput(value: string): string | null {
+  const trimmed = value.trim();
+  const compactMatch = /^(\d{4})(\d{2})(\d{2})$/.exec(trimmed);
+  const ymdMatch = /^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?$/.exec(trimmed);
+  const dmyMatch = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(trimmed);
+  const match = ymdMatch ?? compactMatch;
+
+  if (match) {
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    return isRealCalendarDate(year, month, day)
+      ? `${year}-${padDatePart(String(month))}-${padDatePart(String(day))}`
+      : null;
+  }
+
+  if (dmyMatch) {
+    const day = Number(dmyMatch[1]);
+    const month = Number(dmyMatch[2]);
+    const year = Number(dmyMatch[3]);
+    return isRealCalendarDate(year, month, day)
+      ? `${year}-${padDatePart(String(month))}-${padDatePart(String(day))}`
+      : null;
+  }
+
+  return null;
+}
+
+function ProfilePage(props: {
+  currentProfile: StoredUserProfileV3 | null;
   onGoHome: () => void;
-  onSelectRole: (roleId: RoleId) => void;
+  onSaveProfile: (profile: StoredUserProfileV3) => void;
 }) {
+  const [form, setForm] = useState(() => createProfileFormState(props.currentProfile));
+  const isValid = isProfileFormValid(form);
+
+  useEffect(() => {
+    setForm(createProfileFormState(props.currentProfile));
+  }, [props.currentProfile]);
+
+  function updateForm<Key extends keyof typeof form>(key: Key, value: (typeof form)[Key]) {
+    setForm((current) => ({
+      ...current,
+      [key]: value
+    }));
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalizedBirthDate = normalizeBirthDateInput(form.birthDate);
+    if (!isValid || !normalizedBirthDate) {
+      return;
+    }
+
+    const timestamp = new Date().toISOString();
+    props.onSaveProfile({
+      gender: form.gender as Gender,
+      birthDate: normalizedBirthDate,
+      birthHourBranch: form.birthHourBranch ? (form.birthHourBranch as BirthHourBranch) : null,
+      birthPlace: form.birthPlace.trim(),
+      currentPlace: form.currentPlace.trim(),
+      createdAt: props.currentProfile?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+      version: 1
+    });
+  }
+
   return (
     <motion.main
       variants={pageVariants}
@@ -398,90 +490,119 @@ function RolePage(props: {
       transition={{ duration: 0.32, ease: "easeOut" }}
       className="role-page flex flex-1 flex-col"
     >
-      <div className="role-page__toolbar">
-        <button className="role-page__icon-button" onClick={props.onGoHome} type="button" disabled={!props.currentRoleId}>
-          ‹
-        </button>
-        <div className="role-page__title-pill">
-          <span>选择角色</span>
-          <span className="role-page__mini-dot" aria-hidden="true" />
-          <span>⌄</span>
-        </div>
-      </div>
+      <div className="profile-page__content">
+        <motion.div variants={revealVariants} initial="hidden" animate="show" className="profile-page__theme">
+          <span className="profile-page__brand">One Day One Secret</span>
+          <h1 className="serif-title profile-page__theme-title">一日天机</h1>
+          <p>
+            以出生信息、所在城市与今日节气，生成一页本地黄历和轻养生节律。
+          </p>
+          {props.currentProfile ? (
+            <button className="ghost-button ghost-button--small profile-page__home-link" onClick={props.onGoHome} type="button">
+              返回今日
+            </button>
+          ) : null}
+        </motion.div>
 
-      <div className="role-page__content">
-        <motion.div
+        <motion.form
           variants={staggerVariants}
           initial="hidden"
           animate="show"
-          className="role-choice-grid"
+          className="paper-panel profile-form"
+          onSubmit={handleSubmit}
         >
-          {ROLE_PRESETS.map((role) => {
-            const isPending = props.pendingRoleId === role.id;
-            const isSelected = props.currentRoleId === role.id;
-            const shouldDim = props.isBusy && props.pendingRoleId !== role.id;
+          <motion.div variants={revealVariants} className="profile-form__intro">
+            <span className="profile-form__eyebrow">本地生成</span>
+            <h1 className="serif-title profile-form__title">生成你的今日黄历</h1>
+            <p>
+              资料只保存在当前浏览器，用来生成当天宜忌、状态提示和轻养生建议。
+            </p>
+          </motion.div>
 
-            return (
-              <motion.button
-                key={role.id}
-                variants={revealVariants}
-                whileHover={props.isBusy ? undefined : { y: -6, scale: 1.01 }}
-                whileTap={props.isBusy ? undefined : { scale: 0.992 }}
-                className={`choice-card choice-card--role ${
-                  isPending ? "choice-card--pending" : ""
-                } ${isSelected ? "choice-card--selected" : ""
-                } ${shouldDim ? "choice-card--muted" : ""}`}
-                onClick={() => props.onSelectRole(role.id)}
-                type="button"
-                disabled={props.isBusy}
-                aria-label={`选择${role.label}`}
+          <motion.div variants={revealVariants} className="profile-form__grid">
+            <fieldset className="profile-field profile-field--wide">
+              <legend>性别</legend>
+              <div className="profile-segment">
+                {[
+                  ["male", "男"],
+                  ["female", "女"]
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    className={`profile-segment__button ${form.gender === value ? "profile-segment__button--active" : ""}`}
+                    onClick={() => updateForm("gender", value as Gender)}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <label className="profile-field">
+              <span>出生日期</span>
+              <input
+                required
+                autoComplete="bday"
+                inputMode="numeric"
+                placeholder="YYYY-MM-DD"
+                type="text"
+                value={form.birthDate}
+                onBlur={() => {
+                  const normalized = normalizeBirthDateInput(form.birthDate);
+                  if (normalized) {
+                    updateForm("birthDate", normalized);
+                  }
+                }}
+                onChange={(event) => updateForm("birthDate", event.target.value)}
+              />
+            </label>
+
+            <label className="profile-field">
+              <span>出生时辰</span>
+              <select
+                value={form.birthHourBranch}
+                onChange={(event) => updateForm("birthHourBranch", event.target.value as BirthHourBranch | "")}
               >
-                <div className="role-card__status">
-                  {isSelected ? "默认角色" : isPending ? "确认中" : "可选择"}
-                </div>
-                <div className={`role-card__avatar role-card__avatar--${role.id}`} aria-hidden="true">
-                  <video
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    preload="metadata"
-                    poster={role.avatarPosterSrc}
-                    src={role.avatarVideoSrc}
-                  />
-                </div>
-                <span className="sr-only">{role.avatarAlt}</span>
+                <option value="">不确定</option>
+                {BIRTH_HOUR_OPTIONS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-                <h2 className="role-card__name">{role.label}</h2>
-                <p className="role-card__intro">{role.intro}</p>
+            <label className="profile-field">
+              <span>出生地</span>
+              <input
+                required
+                placeholder="例如：杭州"
+                type="text"
+                value={form.birthPlace}
+                onChange={(event) => updateForm("birthPlace", event.target.value)}
+              />
+            </label>
 
-                <div className="role-card__info">
-                  <InfoBlock label="基础状态" values={role.baseStatus} compact />
-                  <InfoBlock label="情绪特质" values={role.emotionTraits} compact />
-                </div>
+            <label className="profile-field">
+              <span>当前所在地</span>
+              <input
+                required
+                placeholder="例如：上海"
+                type="text"
+                value={form.currentPlace}
+                onChange={(event) => updateForm("currentPlace", event.target.value)}
+              />
+            </label>
+          </motion.div>
 
-                <div className="role-card__year">
-                  <span>今年喜忌</span>
-                  <p>{role.baziSummary}</p>
-                </div>
-
-                <div className="role-card__signals">
-                  {role.annualFocus.slice(0, 2).map((item) => (
-                    <SignalChip key={item} label={`宜 · ${item}`} tone="good" />
-                  ))}
-                  {role.annualAvoids.slice(0, 1).map((item) => (
-                    <SignalChip key={item} label={`忌 · ${item}`} tone="soft" />
-                  ))}
-                </div>
-
-                <span className="role-card__radio" aria-hidden="true" />
-                <span className="role-card__confirm">
-                  {isPending ? "正在确认" : isSelected ? "进入首页" : "确认选择"}
-                </span>
-              </motion.button>
-            );
-          })}
-        </motion.div>
+          <motion.div variants={revealVariants} className="profile-form__footer">
+            <p>不请求定位，不上传资料；未填出生时辰时会按日期与所在地估算。</p>
+            <button className="seal-button profile-form__submit" disabled={!isValid} type="submit">
+              生成今日内容
+            </button>
+          </motion.div>
+        </motion.form>
       </div>
     </motion.main>
   );
@@ -489,22 +610,23 @@ function RolePage(props: {
 
 function Dashboard(props: {
   homeRevealKey: number;
-  role: RolePreset;
+  profile: StoredUserProfileV3;
   snapshot: DailySnapshot;
   onOpenRolePage: () => void;
   onReopenHexagram: () => void;
 }) {
-  const [isMobileRoleOpen, setIsMobileRoleOpen] = useState(false);
+  const [isMobileProfileOpen, setIsMobileProfileOpen] = useState(false);
 
   useEffect(() => {
-    setIsMobileRoleOpen(false);
-  }, [props.role.id]);
+    setIsMobileProfileOpen(false);
+  }, [props.snapshot.profileHash]);
 
   return (
     <div className="dashboard-shell">
       <div className="hero-layout">
         <AnimatePresence mode="wait">
           <motion.section
+            id="daily-wellness"
             key={`hero-${props.snapshot.id}-${props.homeRevealKey}`}
             variants={pageVariants}
             initial="initial"
@@ -516,16 +638,16 @@ function Dashboard(props: {
             <div className="hero-card__topline">
               <div className="hero-card__eyebrow">
                 <span className="hero-card__dot" />
-                当日一卦
+                今日黄历
               </div>
               <button className="ghost-button ghost-button--small" onClick={props.onReopenHexagram} type="button">
-                重看今日卦象
+                查看卦象
               </button>
             </div>
 
             <div className="hero-card__grid">
               <div className="hero-card__altar">
-                <div className="hero-card__altar-mark">卦</div>
+                <div className="hero-card__altar-mark">第 {props.snapshot.hexagram.index} 卦</div>
                 <HexagramGlyph
                   animated
                   emphasis="hero"
@@ -534,6 +656,7 @@ function Dashboard(props: {
                   staggerMs={90}
                 />
                 <div className="hero-card__altar-copy">
+                  <span className="hero-card__hexagram-name">{props.snapshot.hexagram.name}</span>
                   <span className="hero-card__sealline">{props.snapshot.hexagram.image}</span>
                   <span className="hero-card__subseal">{buildHeroSubline(props.snapshot)}</span>
                 </div>
@@ -546,24 +669,24 @@ function Dashboard(props: {
                 className="hero-card__content"
               >
                 <motion.p variants={modalRevealVariants} className="hero-card__kicker">
-                  {buildHeroKicker(props.snapshot)}
+                  {props.snapshot.almanac.statusTitle}
                 </motion.p>
                 <motion.h2 variants={modalRevealVariants} className="serif-title hero-card__title">
-                  {props.snapshot.hexagram.name}
+                  今日状态提示
                 </motion.h2>
                 <motion.p variants={modalRevealVariants} className="hero-card__headline">
-                  {props.snapshot.hexagram.headline}
+                  {props.snapshot.almanac.statusSummary}
                 </motion.p>
                 <motion.p variants={modalRevealVariants} className="hero-card__summary">
-                  {props.snapshot.hexagram.guidance}
+                  {props.snapshot.birthTimeSummary}
                 </motion.p>
 
                 <motion.div variants={modalRevealVariants} className="hero-card__signals">
-                  {props.snapshot.hexagram.focusTags.slice(0, 3).map((item) => (
-                    <SignalChip key={item} label={`今日宜 · ${item}`} tone="good" />
+                  {props.snapshot.almanac.dos.map((item) => (
+                    <SignalChip key={item} label={`宜 · ${item}`} tone="good" />
                   ))}
-                  {props.snapshot.hexagram.avoidTags.slice(0, 1).map((item) => (
-                    <SignalChip key={item} label={`今日少做 · ${item}`} tone="warn" />
+                  {props.snapshot.almanac.donts.slice(0, 1).map((item) => (
+                    <SignalChip key={item} label={`忌 · ${item}`} tone="warn" />
                   ))}
                 </motion.div>
 
@@ -576,7 +699,7 @@ function Dashboard(props: {
                   ))}
                   {props.snapshot.hexagram.cautions.slice(0, 1).map((item) => (
                     <div key={item} className="hero-card__note hero-card__note--warn">
-                      <span className="hero-card__note-title">今日少做</span>
+                      <span className="hero-card__note-title">今日忌</span>
                       <p>{item}</p>
                     </div>
                   ))}
@@ -586,22 +709,24 @@ function Dashboard(props: {
           </motion.section>
         </AnimatePresence>
 
-        <RoleRail
-          role={props.role}
+        <ProfileRail
+          profile={props.profile}
           snapshot={props.snapshot}
           onOpenRolePage={props.onOpenRolePage}
           onReopenHexagram={props.onReopenHexagram}
         />
       </div>
 
-      <RoleMobileAccordion
-        open={isMobileRoleOpen}
-        role={props.role}
+      <ProfileMobileAccordion
+        open={isMobileProfileOpen}
+        profile={props.profile}
         snapshot={props.snapshot}
         onOpenRolePage={props.onOpenRolePage}
         onReopenHexagram={props.onReopenHexagram}
-        onToggle={() => setIsMobileRoleOpen((value) => !value)}
+        onToggle={() => setIsMobileProfileOpen((value) => !value)}
       />
+
+      <RhythmPanel snapshot={props.snapshot} />
 
       <motion.div
         key={`services-${props.snapshot.id}-${props.homeRevealKey}`}
@@ -693,8 +818,59 @@ function Dashboard(props: {
   );
 }
 
-function RoleRail(props: {
-  role: RolePreset;
+function getGenderLabel(gender: Gender): string {
+  return gender === "male" ? "男" : "女";
+}
+
+function RhythmPanel(props: {
+  snapshot: DailySnapshot;
+}) {
+  const rhythmItems = [
+    {
+      label: "节气",
+      value: props.snapshot.calendar.solarTermName,
+      copy: props.snapshot.seasonalSummary
+    },
+    {
+      label: "主轴",
+      value: props.snapshot.hexagram.theme,
+      copy: props.snapshot.hexagram.headline
+    },
+    {
+      label: "状态",
+      value: props.snapshot.profileLabel,
+      copy: props.snapshot.locationSummary
+    }
+  ];
+
+  return (
+    <motion.section
+      id="body-rhythm"
+      variants={revealVariants}
+      initial="hidden"
+      animate="show"
+      className="paper-panel rhythm-card"
+    >
+      <div className="rhythm-card__heading">
+        <ServiceHeader eyebrow="身体节律" title="今天的节奏线" compact />
+        <ToolChip>{props.snapshot.calendar.ganZhiSummary}</ToolChip>
+      </div>
+
+      <div className="rhythm-card__grid">
+        {rhythmItems.map((item) => (
+          <div key={item.label} className="rhythm-card__item">
+            <p className="rhythm-card__label">{item.label}</p>
+            <h3 className="serif-title rhythm-card__value">{item.value}</h3>
+            <p className="rhythm-card__copy">{item.copy}</p>
+          </div>
+        ))}
+      </div>
+    </motion.section>
+  );
+}
+
+function ProfileRail(props: {
+  profile: StoredUserProfileV3;
   snapshot: DailySnapshot;
   onOpenRolePage: () => void;
   onReopenHexagram: () => void;
@@ -702,57 +878,50 @@ function RoleRail(props: {
   return (
     <aside className="paper-panel role-rail">
       <div className="role-rail__header">
-        <span className="role-rail__eyebrow">角色侧栏</span>
-        <span className="seal-stamp role-rail__seal">{props.role.seal}</span>
+        <span className="role-rail__eyebrow">资料摘要</span>
+        <span className="seal-stamp role-rail__seal">本</span>
       </div>
 
       <div>
-        <h3 className="serif-title text-3xl">{props.role.label}</h3>
-        <p className="mt-3 text-sm leading-7 text-[color:var(--color-muted)]">{props.role.intro}</p>
+        <h3 className="serif-title text-3xl">{props.snapshot.profileLabel}</h3>
+        <p className="mt-3 text-sm leading-7 text-[color:var(--color-muted)]">
+          {props.snapshot.profileDigest}
+        </p>
       </div>
 
       <div className="role-rail__section">
-        <p className="role-rail__section-label">当前角色</p>
+        <p className="role-rail__section-label">填写资料</p>
         <p className="mt-3 text-sm leading-7 text-[color:var(--color-muted)]">
-          {props.role.genderLabel} · {props.role.shortLabel}
+          出生地：{props.profile.birthPlace}
+          <br />
+          当前所在地：{props.profile.currentPlace}
         </p>
         <button className="ghost-button role-rail__action" onClick={props.onOpenRolePage} type="button">
-          切换角色
+          修改资料
         </button>
       </div>
 
       <div className="role-rail__section">
-        <p className="role-rail__section-label">年度摘要</p>
-        <p className="text-sm leading-7 text-[color:var(--color-muted)]">{props.role.baziSummary}</p>
+        <p className="role-rail__section-label">时辰说明</p>
+        <p className="text-sm leading-7 text-[color:var(--color-muted)]">{props.snapshot.birthTimeSummary}</p>
       </div>
 
       <div className="role-rail__section">
-        <p className="role-rail__section-label">基础状态</p>
-        <div className="space-y-3">
-          {props.role.baseStatus.map((item) => (
-            <p key={item} className="text-sm leading-7 text-[color:var(--color-muted)]">
-              {item}
-            </p>
-          ))}
-        </div>
-      </div>
-
-      <div className="role-rail__section">
-        <p className="role-rail__section-label">今日提醒</p>
+        <p className="role-rail__section-label">所在地提示</p>
         <p className="text-sm leading-7 text-[color:var(--color-muted)]">
-          {props.snapshot.seasonalSummary}
+          {props.snapshot.locationSummary}
         </p>
       </div>
 
       <button className="ghost-button" onClick={props.onReopenHexagram} type="button">
-        重看今日卦象
+        查看卦象
       </button>
     </aside>
   );
 }
 
-function RoleMobileAccordion(props: {
-  role: RolePreset;
+function ProfileMobileAccordion(props: {
+  profile: StoredUserProfileV3;
   snapshot: DailySnapshot;
   open: boolean;
   onToggle: () => void;
@@ -763,12 +932,12 @@ function RoleMobileAccordion(props: {
     <section className="paper-panel role-mobile-card lg:hidden">
       <button className="role-mobile-card__toggle" onClick={props.onToggle} type="button">
         <div className="flex items-center gap-3">
-          <span className="seal-stamp role-mobile-card__seal">{props.role.seal}</span>
+          <span className="seal-stamp role-mobile-card__seal">本</span>
           <div className="text-left">
             <p className="text-xs uppercase tracking-[0.24em] text-[color:var(--color-muted)]">
-              角色摘要
+              资料摘要
             </p>
-            <p className="serif-title mt-1 text-2xl">{props.role.label}</p>
+            <p className="serif-title mt-1 text-2xl">{props.snapshot.profileLabel}</p>
           </div>
         </div>
         <span className="text-sm text-[color:var(--color-muted)]">
@@ -778,20 +947,23 @@ function RoleMobileAccordion(props: {
 
       <div className={`role-mobile-card__content ${props.open ? "role-mobile-card__content--open" : ""}`}>
         <div className="mt-5 grid gap-4">
-          <InfoBlock label="基础状态" values={props.role.baseStatus} compact />
           <p className="text-sm leading-7 text-[color:var(--color-muted)]">
-            <span className="text-[color:var(--color-ink)]">年度摘要：</span>
-            {props.role.baziSummary}
+            <span className="text-[color:var(--color-ink)]">出生信息：</span>
+            {getGenderLabel(props.profile.gender)} · {props.profile.birthDate} · {props.profile.birthPlace}
           </p>
           <p className="text-sm leading-7 text-[color:var(--color-muted)]">
-            <span className="text-[color:var(--color-ink)]">今日提醒：</span>
-            {props.snapshot.seasonalSummary}
+            <span className="text-[color:var(--color-ink)]">所在地：</span>
+            {props.profile.currentPlace}
+          </p>
+          <p className="text-sm leading-7 text-[color:var(--color-muted)]">
+            <span className="text-[color:var(--color-ink)]">时辰说明：</span>
+            {props.snapshot.birthTimeSummary}
           </p>
           <button className="ghost-button" onClick={props.onOpenRolePage} type="button">
-            切换角色
+            修改资料
           </button>
           <button className="ghost-button" onClick={props.onReopenHexagram} type="button">
-            重看今日卦象
+            查看卦象
           </button>
         </div>
       </div>
@@ -800,7 +972,6 @@ function RoleMobileAccordion(props: {
 }
 
 function HexagramModal(props: {
-  role: RolePreset;
   snapshot: DailySnapshot;
   onClose: () => void;
 }) {
@@ -851,7 +1022,7 @@ function HexagramModal(props: {
                   {props.snapshot.hexagram.name}
                 </h2>
                 <p className="mt-4 text-sm leading-7 text-[color:var(--color-muted)]">
-                  {props.role.label} · {props.snapshot.calendar.solarTermName} ·{" "}
+                  {props.snapshot.profileLabel} · {props.snapshot.calendar.solarTermName} ·{" "}
                   {props.snapshot.calendar.ganZhiSummary}
                 </p>
               </div>
@@ -898,9 +1069,9 @@ function HexagramModal(props: {
 }
 
 function HistoryDrawer(props: {
-  history: HistoryEntryV2[];
+  history: HistoryEntryV3[];
   selectedId: string | null;
-  selectedEntry: HistoryEntryV2 | null;
+  selectedEntry: HistoryEntryV3 | null;
   onClose: () => void;
   onSelect: (id: string) => void;
 }) {
@@ -935,13 +1106,12 @@ function HistoryDrawer(props: {
 
           {props.history.length === 0 ? (
             <p className="text-sm leading-7 text-[color:var(--color-muted)]">
-              还没有历史快照。选定角色后，系统会自动保存每天的内容。
+              还没有历史快照。填写资料后，系统会自动保存每天的内容。
             </p>
           ) : (
             <div className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
               <div className="space-y-3">
                 {props.history.map((entry) => {
-                  const role = ROLE_PRESET_MAP[entry.roleId];
                   const selected = entry.id === props.selectedId;
 
                   return (
@@ -955,11 +1125,11 @@ function HistoryDrawer(props: {
                         <span className="text-sm text-[color:var(--color-muted)]">
                           {entry.dateKey.replaceAll("-", ".")}
                         </span>
-                        <ToolChip>{role.genderLabel}</ToolChip>
+                        <ToolChip>{entry.snapshot.profileLabel}</ToolChip>
                       </div>
                       <h3 className="serif-title mt-3 text-2xl">{entry.snapshot.hexagram.name}</h3>
                       <p className="mt-2 text-sm leading-7 text-[color:var(--color-muted)]">
-                        {role.label}
+                        {entry.snapshot.almanac.statusTitle}
                       </p>
                     </button>
                   );
@@ -979,8 +1149,7 @@ function HistoryDrawer(props: {
   );
 }
 
-function HistoryPreview(props: { entry: HistoryEntryV2 }) {
-  const role = ROLE_PRESET_MAP[props.entry.roleId];
+function HistoryPreview(props: { entry: HistoryEntryV3 }) {
   const snapshot = props.entry.snapshot;
 
   return (
@@ -994,7 +1163,7 @@ function HistoryPreview(props: { entry: HistoryEntryV2 }) {
     >
       <section className="history-preview-card">
         <div className="flex flex-wrap items-center gap-3">
-          <ToolChip>{role.label}</ToolChip>
+          <ToolChip>{snapshot.profileLabel}</ToolChip>
           <ToolChip>{snapshot.calendar.solarTermName}</ToolChip>
           <ToolChip>{formatDateTime(props.entry.savedAt)}</ToolChip>
         </div>
@@ -1041,31 +1210,6 @@ function HistoryPreview(props: { entry: HistoryEntryV2 }) {
           {snapshot.recipe.description}
         </p>
       </section>
-    </motion.div>
-  );
-}
-
-function RoleTransitionCurtain(props: { role: RolePreset }) {
-  return (
-    <motion.div
-      className="selection-curtain"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        className="selection-curtain__paper"
-        initial={{ opacity: 0, y: 16, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 12, scale: 0.98 }}
-        transition={{ duration: 0.26, ease: "easeOut" }}
-      >
-        <span className="selection-curtain__seal">{props.role.seal}</span>
-        <p className="selection-curtain__title">收印入场</p>
-        <p className="selection-curtain__copy">
-          今天先以 {props.role.label} 的视角，收下一页专属调理。
-        </p>
-      </motion.div>
     </motion.div>
   );
 }
@@ -1129,7 +1273,8 @@ function InfoBlock(props: { label: string; values: string[]; compact?: boolean }
 
 function buildHeroKicker(snapshot: DailySnapshot): string {
   const firstFocus = snapshot.hexagram.focusTags[0] ?? "稳住节奏";
-  return `${snapshot.calendar.solarTermName}今日卦眼：先${firstFocus}，再让一天顺起来。`;
+  const focusLead = firstFocus.startsWith("先") ? firstFocus : `先${firstFocus}`;
+  return `${snapshot.calendar.solarTermName}今日卦眼：${focusLead}，再让一天顺起来。`;
 }
 
 function buildHeroSubline(snapshot: DailySnapshot): string {

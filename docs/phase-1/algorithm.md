@@ -1,23 +1,37 @@
 # 纯本地生成算法说明
 
-> 当前版本只保留确定性、本地可复现的日内容生成规则。
+> 当前版本只保留确定性、本地可复现的个人资料驱动规则，不接 AI、不请求定位、不上传资料。
 
 ## 1. 总体流程
 
 ```text
-timestamp
+StoredUserProfileV3 + timestamp
   -> 获取上海日期、节气、干支
-roleId
-  -> 读取固定角色预设
-dateKey + roleSeed + solarTermKey
+  -> 规范化性别、出生日期、可选出生时辰、出生地、当前所在地
+  -> 生成 profileHash
+dateKey + profileHash + solarTermKey + birthDay
   -> 生成当日卦象索引
-角色标签 + 节气季节
+资料派生标签 + 节气季节
   -> 从本地动作 / 穴位 / 食谱池中选出内容
-calendar + role + hexagram + content
+calendar + profile summary + almanac + hexagram + content
   -> 组合成 DailySnapshot
 ```
 
-## 2. 日历上下文
+## 2. 资料输入
+
+`StoredUserProfileV3` 包含：
+
+- `gender`: `"male" | "female"`
+- `birthDate`: `YYYY-MM-DD`
+- `birthHourBranch`: 12 个传统时辰之一，允许 `null`
+- `birthPlace`: 手动输入城市
+- `currentPlace`: 手动输入城市
+- `createdAt` / `updatedAt`
+- `version: 1`
+
+生成时会对城市文本做 trim 和空白规整。出生时辰为空时，不做精确时柱判断，只按出生日期、性别和所在地生成温和的今日节律提示。
+
+## 3. 日历上下文
 
 返回结构：
 
@@ -37,62 +51,53 @@ type CalendarContext = {
 - `solarTermStage` 仍按 `1-4 / 5-10 / 11+` 天分段
 - 所有日期都以 `Asia/Shanghai` 为准
 
-## 3. 卦象生成
+## 4. 卦象生成
 
-### 3.1 输入
+输入：
 
 - `dateKey`
-- `roleSeed`
+- `profileHash`
 - `solarTerm.monthNumber`
+- 出生日期里的日数字
 
-### 3.2 公式
+公式：
 
 ```text
-hexagramIndex = (hash(dateKey) + roleSeed + solarTerm.monthNumber * 3) % 64
+hexagramIndex = (
+  hash(`${dateKey}:${profileHash}`) + solarTerm.monthNumber * 3 + birthDay
+) % 64
 ```
 
 约束：
 
-- 同一角色同一天结果固定
-- 两个角色同一天必然落到不同卦象索引
+- 同一资料同一天结果固定
+- 修改出生信息或当前所在地会生成新的 `profileHash`
+- 不以角色预设或固定模板作为首页生成依据
 
-### 3.3 卦象库
+## 5. 内容选择
 
-- 本地完整维护 64 卦名称与六爻结构
-- 每卦至少提供：
-  - 卦名
-  - 六爻
-  - 卦象主题
-  - 焦点标签
-  - 避免项标签
-
-## 4. 内容选择
-
-### 4.1 动作与穴位
+资料会派生出内部内容标签，例如 `desk_relief`、`mobility`、`warmth`、`calm`、`digestive_balance`、`sleep_regulation`。这些标签只用于排序内容，不直接暴露成“基础状态”或“情绪特质”。
 
 排序依据：
 
-- 角色标签匹配数
-- 季节匹配
-- 固定哈希扰动
+- 资料标签匹配数
+- 节气季节匹配
+- `profileHash + dateKey` 的固定哈希扰动
 
 输出：
 
-- 健身固定 1-2 条
-- 穴位固定 1 条
+- 今日黄历：`宜 / 忌 / 今日主轴 / 状态提示`
+- 卦象：1 个本地 64 卦结果
+- 健身：1-2 条规则推荐，另展示 3 个静音演示视频
+- 穴位：1 条
+- 节气食谱：1 条
 
-### 4.2 节气食谱
-
-- 每个节气至少 1 个家常食谱
-- 食谱描述允许按角色标签改写推荐理由
-- 不引入外部接口或知识检索
-
-## 5. 历史去重
+## 6. 历史去重
 
 历史键固定为：
 
 ```text
-id = `${roleId}-${dateKey}`
+id = `${profileHash}-${dateKey}`
 ```
 
 规则：

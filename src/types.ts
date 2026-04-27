@@ -65,10 +65,27 @@ export const ROLE_PREFERENCE_TAGS = [
   "sleep_regulation"
 ] as const;
 export const SEASONS = ["spring", "summer", "autumn", "winter"] as const;
+export const GENDERS = ["male", "female"] as const;
+export const BIRTH_HOUR_BRANCHES = [
+  "zi",
+  "chou",
+  "yin",
+  "mao",
+  "chen",
+  "si",
+  "wu",
+  "wei",
+  "shen",
+  "you",
+  "xu",
+  "hai"
+] as const;
 
 export type RoleId = (typeof ROLE_IDS)[number];
 export type RolePreferenceTag = (typeof ROLE_PREFERENCE_TAGS)[number];
 export type Season = (typeof SEASONS)[number];
+export type Gender = (typeof GENDERS)[number];
+export type BirthHourBranch = (typeof BIRTH_HOUR_BRANCHES)[number];
 
 export type RolePreset = {
   id: RoleId;
@@ -105,6 +122,17 @@ export type DailySupplement = {
 export type StoredProfile = {
   constitution: Constitution;
   healthTags: HealthTag[];
+  createdAt: string;
+  updatedAt: string;
+  version: 1;
+};
+
+export type StoredUserProfileV3 = {
+  gender: Gender;
+  birthDate: string;
+  birthHourBranch: BirthHourBranch | null;
+  birthPlace: string;
+  currentPlace: string;
   createdAt: string;
   updatedAt: string;
   version: 1;
@@ -171,21 +199,32 @@ export type RecipeItem = {
 
 export type DailySnapshot = {
   id: string;
-  roleId: RoleId;
+  profileHash: string;
+  profileLabel: string;
   dateKey: string;
   generatedAt: string;
   calendar: CalendarContext;
   seasonalSummary: string;
-  roleDigest: string;
+  profileDigest: string;
+  birthTimeSummary: string;
+  locationSummary: string;
+  almanac: {
+    dos: string[];
+    donts: string[];
+    statusTitle: string;
+    statusSummary: string;
+    hourNote: string;
+    locationNote: string;
+  };
   hexagram: DailyHexagram;
   exercises: ExerciseItem[];
   acupoint: AcupointItem;
   recipe: RecipeItem;
 };
 
-export type HistoryEntryV2 = {
+export type HistoryEntryV3 = {
   id: string;
-  roleId: RoleId;
+  profileHash: string;
   dateKey: string;
   savedAt: string;
   snapshot: DailySnapshot;

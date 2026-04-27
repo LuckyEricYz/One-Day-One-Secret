@@ -89,6 +89,73 @@ const HEXAGRAM_NAMES: string[][] = [
   ["天地否", "泽地萃", "火地晋", "雷地豫", "风地观", "水地比", "山地剥", "坤为地"]
 ];
 
+const KING_WEN_HEXAGRAM_NAMES = [
+  "乾为天",
+  "坤为地",
+  "水雷屯",
+  "山水蒙",
+  "水天需",
+  "天水讼",
+  "地水师",
+  "水地比",
+  "风天小畜",
+  "天泽履",
+  "地天泰",
+  "天地否",
+  "天火同人",
+  "火天大有",
+  "地山谦",
+  "雷地豫",
+  "泽雷随",
+  "山风蛊",
+  "地泽临",
+  "风地观",
+  "火雷噬嗑",
+  "山火贲",
+  "山地剥",
+  "地雷复",
+  "天雷无妄",
+  "山天大畜",
+  "山雷颐",
+  "泽风大过",
+  "坎为水",
+  "离为火",
+  "泽山咸",
+  "雷风恒",
+  "天山遁",
+  "雷天大壮",
+  "火地晋",
+  "地火明夷",
+  "风火家人",
+  "火泽睽",
+  "水山蹇",
+  "雷水解",
+  "山泽损",
+  "风雷益",
+  "泽天夬",
+  "天风姤",
+  "泽地萃",
+  "地风升",
+  "泽水困",
+  "水风井",
+  "泽火革",
+  "火风鼎",
+  "震为雷",
+  "艮为山",
+  "风山渐",
+  "雷泽归妹",
+  "雷火丰",
+  "火山旅",
+  "巽为风",
+  "兑为泽",
+  "风水涣",
+  "水泽节",
+  "风泽中孚",
+  "雷山小过",
+  "水火既济",
+  "火水未济"
+] as const;
+
 function dedupe(values: string[]): string[] {
   return [...new Set(values)];
 }
@@ -107,7 +174,7 @@ function buildSummary(lower: TrigramDefinition, upper: TrigramDefinition): {
   };
 }
 
-export const HEXAGRAM_LIBRARY: DailyHexagram[] = TRIGRAM_ORDER.flatMap((lowerKey, lowerIndex) =>
+const HEXAGRAM_MATRIX = TRIGRAM_ORDER.flatMap((lowerKey, lowerIndex) =>
   TRIGRAM_ORDER.map((upperKey, upperIndex) => {
     const lower = TRIGRAMS[lowerKey];
     const upper = TRIGRAMS[upperKey];
@@ -132,3 +199,18 @@ export const HEXAGRAM_LIBRARY: DailyHexagram[] = TRIGRAM_ORDER.flatMap((lowerKey
     };
   })
 );
+
+const HEXAGRAM_BY_NAME = new Map(HEXAGRAM_MATRIX.map((item) => [item.name, item]));
+
+export const HEXAGRAM_LIBRARY: DailyHexagram[] = KING_WEN_HEXAGRAM_NAMES.map((name, index) => {
+  const hexagram = HEXAGRAM_BY_NAME.get(name);
+
+  if (!hexagram) {
+    throw new Error(`Missing King Wen hexagram data: ${name}`);
+  }
+
+  return {
+    ...hexagram,
+    index: index + 1
+  };
+});

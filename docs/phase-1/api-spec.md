@@ -7,32 +7,28 @@
 当前版本对外真正稳定的“接口”只有两类：
 
 1. 前端本地计算 `DailySnapshot`
-2. 本地存储当前角色、弹窗已读状态和历史快照
+2. 本地存储个人资料、弹窗已读状态和历史快照
 
 ## 2. 本地域模型
 
-### 2.1 角色预设
+### 2.1 个人资料
 
 ```ts
-type RoleId = "role_a" | "role_b";
+type Gender = "male" | "female";
+type BirthHourBranch =
+  | "zi" | "chou" | "yin" | "mao"
+  | "chen" | "si" | "wu" | "wei"
+  | "shen" | "you" | "xu" | "hai";
 
-type RolePreset = {
-  id: RoleId;
-  genderLabel: string;
-  shortLabel: string;
-  label: string;
-  seal: string;
-  avatarVideoSrc: string;
-  avatarPosterSrc: string;
-  avatarAlt: string;
-  roleSeed: number;
-  intro: string;
-  baseStatus: string[];
-  baziSummary: string;
-  annualFocus: string[];
-  annualAvoids: string[];
-  emotionTraits: string[];
-  contentTags: RolePreferenceTag[];
+type StoredUserProfileV3 = {
+  gender: Gender;
+  birthDate: string; // YYYY-MM-DD
+  birthHourBranch: BirthHourBranch | null;
+  birthPlace: string;
+  currentPlace: string;
+  createdAt: string;
+  updatedAt: string;
+  version: 1;
 };
 ```
 
@@ -40,13 +36,24 @@ type RolePreset = {
 
 ```ts
 type DailySnapshot = {
-  id: string; // `${roleId}-${dateKey}`
-  roleId: RoleId;
+  id: string; // `${profileHash}-${dateKey}`
+  profileHash: string;
+  profileLabel: string;
   dateKey: string;
   generatedAt: string;
   calendar: CalendarContext;
   seasonalSummary: string;
-  roleDigest: string;
+  profileDigest: string;
+  birthTimeSummary: string;
+  locationSummary: string;
+  almanac: {
+    dos: string[];
+    donts: string[];
+    statusTitle: string;
+    statusSummary: string;
+    hourNote: string;
+    locationNote: string;
+  };
   hexagram: DailyHexagram;
   exercises: ExerciseItem[];
   acupoint: AcupointItem;
@@ -57,9 +64,9 @@ type DailySnapshot = {
 ### 2.3 历史快照
 
 ```ts
-type HistoryEntryV2 = {
+type HistoryEntryV3 = {
   id: string;
-  roleId: RoleId;
+  profileHash: string;
   dateKey: string;
   savedAt: string;
   snapshot: DailySnapshot;
@@ -69,25 +76,27 @@ type HistoryEntryV2 = {
 ## 3. 本地存储键
 
 ```text
-tianji_v2_role_id
-tianji_v2_history
-tianji_v2_modal_seen
-tianji_v2_role_schema
+tianji_v3_profile
+tianji_v3_history
+tianji_v3_modal_seen
+tianji_v3_profile_schema
 ```
 
 规则：
 
-- `tianji_v2_role_id` 只保存当前角色
-- `tianji_v2_history` 保存去重后的历史快照
-- `tianji_v2_modal_seen` 记录 `${roleId}:${dateKey}` 是否已读
-- `tianji_v2_role_schema` 标记当前角色 schema，改版后首次启动会清理旧角色历史
+- `tianji_v3_profile` 保存用户主动填写的资料
+- `tianji_v3_history` 保存去重后的历史快照
+- `tianji_v3_modal_seen` 记录 `${profileHash}:${dateKey}` 是否已读
+- `tianji_v3_profile_schema` 标记当前资料 schema
+- 首次进入 v3 会清理旧 `tianji_v2_*` 角色数据
 
 ## 4. 行为规则
 
-- 同一角色同一天必须生成相同 `DailySnapshot`
-- 每个角色每天只保留一条历史记录
-- 切换角色后立即重新计算，并重新触发卦象弹窗
+- 同一资料同一天必须生成相同 `DailySnapshot`
+- 同一资料每天只保留一条历史记录
+- 修改资料后立即重新计算，并重新触发卦象弹窗
 - 跨日后自动更新 `dateKey` 和快照内容
+- 不请求浏览器定位，不调用远端生成接口
 
 ## 5. 旧接口说明
 

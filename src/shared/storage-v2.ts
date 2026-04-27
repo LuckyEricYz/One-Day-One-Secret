@@ -1,4 +1,14 @@
-import { ROLE_IDS, type DailySnapshot, type HistoryEntryV2, type RoleId } from "../types.js";
+import { ROLE_IDS, type DailySnapshot, type RoleId } from "../types.js";
+
+type LegacyDailySnapshotV2 = DailySnapshot & { roleId: RoleId };
+
+type HistoryEntryV2 = {
+  id: string;
+  roleId: RoleId;
+  dateKey: string;
+  savedAt: string;
+  snapshot: LegacyDailySnapshotV2;
+};
 
 export const STORAGE_V2_KEYS = {
   roleId: "tianji_v2_role_id",
@@ -84,7 +94,7 @@ export function ensureCurrentRoleStorageSchema(): void {
 
 export function mergeHistoryEntries(
   existingEntries: HistoryEntryV2[],
-  snapshot: DailySnapshot
+  snapshot: LegacyDailySnapshotV2
 ): HistoryEntryV2[] {
   const nextEntry: HistoryEntryV2 = {
     id: snapshot.id,
@@ -99,7 +109,7 @@ export function mergeHistoryEntries(
     .slice(0, 180);
 }
 
-export function upsertStoredHistoryEntry(snapshot: DailySnapshot): HistoryEntryV2[] {
+export function upsertStoredHistoryEntry(snapshot: LegacyDailySnapshotV2): HistoryEntryV2[] {
   const next = mergeHistoryEntries(getStoredHistoryV2(), snapshot);
   writeJson(STORAGE_V2_KEYS.history, next);
   return next;

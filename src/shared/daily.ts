@@ -1,20 +1,40 @@
 import { getCalendarContext } from "./calendar.js";
 import { EXERCISE_LIBRARY, ACUPOINT_LIBRARY, RECIPE_LIBRARY } from "./daily-content.js";
 import { HEXAGRAM_LIBRARY } from "./hexagrams.js";
-import { ROLE_PRESET_MAP } from "./roles.js";
 import { SOLAR_TERMS } from "./solarTerms.js";
 import { getShanghaiNowIso } from "./time.js";
 import type {
   AcupointItem,
+  BirthHourBranch,
   DailyHexagram,
   DailySnapshot,
   ExerciseItem,
+  Gender,
   RecipeItem,
-  RoleId,
-  RolePreferenceTag
+  RolePreferenceTag,
+  StoredUserProfileV3
 } from "../types.js";
 
 const SOLAR_TERM_MAP = Object.fromEntries(SOLAR_TERMS.map((term) => [term.key, term]));
+const GENDER_LABELS: Record<Gender, string> = {
+  male: "男",
+  female: "女"
+};
+
+const BIRTH_HOUR_LABELS: Record<BirthHourBranch, string> = {
+  zi: "子时",
+  chou: "丑时",
+  yin: "寅时",
+  mao: "卯时",
+  chen: "辰时",
+  si: "巳时",
+  wu: "午时",
+  wei: "未时",
+  shen: "申时",
+  you: "酉时",
+  xu: "戌时",
+  hai: "亥时"
+};
 
 function hashString(value: string): number {
   let hash = 2166136261;
@@ -25,6 +45,107 @@ function hashString(value: string): number {
   }
 
   return hash >>> 0;
+}
+
+function cleanProfileText(value: string): string {
+  return value.trim().replace(/\s+/g, "");
+}
+
+export function buildProfileHash(profile: StoredUserProfileV3): string {
+  const normalized = [
+    profile.gender,
+    profile.birthDate,
+    profile.birthHourBranch ?? "unknown",
+    cleanProfileText(profile.birthPlace),
+    cleanProfileText(profile.currentPlace)
+  ].join("|");
+
+  return hashString(normalized).toString(36);
+}
+
+function getBirthMonth(profile: StoredUserProfileV3): number {
+  const month = Number(profile.birthDate.slice(5, 7));
+  return Number.isFinite(month) ? month : 1;
+}
+
+function getBirthDay(profile: StoredUserProfileV3): number {
+  const day = Number(profile.birthDate.slice(8, 10));
+  return Number.isFinite(day) ? day : 1;
+}
+
+function deriveProfileTags(profile: StoredUserProfileV3): RolePreferenceTag[] {
+  const tags = new Set<RolePreferenceTag>();
+  const month = getBirthMonth(profile);
+  const currentPlace = cleanProfileText(profile.currentPlace);
+
+  if (profile.gender === "male") {
+    tags.add("mobility");
+    tags.add("desk_relief");
+    tags.add("sleep_regulation");
+  } else {
+    tags.add("warmth");
+    tags.add("calm");
+    tags.add("digestive_balance");
+  }
+
+  if ([3, 4, 5].includes(month)) {
+    tags.add("mobility");
+    tags.add("calm");
+  } else if ([6, 7, 8].includes(month)) {
+    tags.add("digestive_balance");
+    tags.add("calm");
+  } else if ([9, 10, 11].includes(month)) {
+    tags.add("desk_relief");
+    tags.add("sleep_regulation");
+  } else {
+    tags.add("warmth");
+    tags.add("digestive_balance");
+  }
+
+  if (profile.birthHourBranch && ["zi", "hai", "chou"].includes(profile.birthHourBranch)) {
+    tags.add("sleep_regulation");
+    tags.add("warmth");
+  } else if (profile.birthHourBranch && ["yin", "mao", "chen", "si"].includes(profile.birthHourBranch)) {
+    tags.add("mobility");
+    tags.add("desk_relief");
+  } else if (profile.birthHourBranch && ["wu", "wei", "shen"].includes(profile.birthHourBranch)) {
+    tags.add("digestive_balance");
+  } else if (profile.birthHourBranch) {
+    tags.add("calm");
+    tags.add("sleep_regulation");
+  }
+
+  if (/[广深杭沪苏厦福海三亚]/u.test(currentPlace)) {
+    tags.add("digestive_balance");
+    tags.add("calm");
+  }
+
+  if (/[北哈沈长呼乌兰西宁]/u.test(currentPlace)) {
+    tags.add("warmth");
+    tags.add("desk_relief");
+  }
+
+  return [...tags];
+}
+
+function buildProfileDigest(profile: StoredUserProfileV3): string {
+  const birthPlace = profile.birthPlace.trim();
+  const currentPlace = profile.currentPlace.trim();
+  const hourText = profile.birthHourBranch ? `${BIRTH_HOUR_LABELS[profile.birthHourBranch]}出生` : "出生时辰未填";
+
+  return `${GENDER_LABELS[profile.gender]} · ${birthPlace}生 · 现居${currentPlace} · ${hourText}`;
+}
+
+function buildBirthTimeSummary(profile: StoredUserProfileV3): string {
+  if (!profile.birthHourBranch) {
+    return "未填写出生时辰，本页按出生日期、性别与所在地生成，只作为今日节律参考。";
+  }
+
+  return `${BIRTH_HOUR_LABELS[profile.birthHourBranch]}入盘，今日建议看重节奏先后，不把单一标签当定论。`;
+}
+
+function buildLocationSummary(profile: StoredUserProfileV3, solarTermName: string): string {
+  return `当前所在地「${profile.currentPlace.trim()}」参与今日节律参照，结合${solarTermName}给出宜忌与轻养生建议。`;
 }
 
 function countMatches(source: RolePreferenceTag[], target: RolePreferenceTag[]): number {
@@ -97,9 +218,13 @@ function buildCautionLine(tag: string): string {
   return mapping[tag] ?? "今天少一点额外消耗会更舒服。";
 }
 
+function prefixWithFirst(value: string): string {
+  return value.startsWith("先") ? value : `先${value}`;
+}
+
 function buildHexagramCopy(
-  roleLabel: string,
-  roleDigest: string,
+  profile: StoredUserProfileV3,
+  profileDigest: string,
   solarTermName: string,
   seasonalSummary: string,
   hexagram: DailyHexagram
@@ -111,24 +236,24 @@ function buildHexagramCopy(
 
   return {
     ...hexagram,
-    headline: `${hexagram.name}当值，今天宜${focusLead}，也要${focusTail}。`,
-    guidance: `${solarTermName}时节${seasonalSummary}。结合${roleLabel}平时的${roleDigest}，更适合先${focusLead}，再慢慢把事情推开。`,
+    headline: `${hexagram.name}当值，${hexagram.image}，今天宜${focusLead}、${focusTail}。`,
+    guidance: `上卦${hexagram.upperTrigram}、下卦${hexagram.lowerTrigram}，取「${hexagram.theme}」之意。${solarTermName}时节${seasonalSummary}，结合你填写的${profileDigest}，今天更适合${prefixWithFirst(focusLead)}，再慢慢把事情推开。`,
     advice,
     cautions
   };
 }
 
 function pickExercises(
-  roleId: RoleId,
+  profileHash: string,
   dateKey: string,
   season: string,
-  roleTags: RolePreferenceTag[]
+  profileTags: RolePreferenceTag[]
 ): ExerciseItem[] {
-  const count = 1 + (hashString(`${dateKey}:${roleId}:exercise-count`) % 2);
+  const count = 1 + (hashString(`${dateKey}:${profileHash}:exercise-count`) % 2);
   const ranked = sortByRelevance(
     EXERCISE_LIBRARY,
-    `${dateKey}:${roleId}:exercise`,
-    roleTags,
+    `${dateKey}:${profileHash}:exercise`,
+    profileTags,
     (item) => (item.seasons.includes(season as never) ? 1 : 0)
   );
 
@@ -136,15 +261,15 @@ function pickExercises(
 }
 
 function pickAcupoint(
-  roleId: RoleId,
+  profileHash: string,
   dateKey: string,
   season: string,
-  roleTags: RolePreferenceTag[]
+  profileTags: RolePreferenceTag[]
 ): AcupointItem {
   const ranked = sortByRelevance(
     ACUPOINT_LIBRARY,
-    `${dateKey}:${roleId}:acupoint`,
-    roleTags,
+    `${dateKey}:${profileHash}:acupoint`,
+    profileTags,
     (item) => (item.seasons.includes(season as never) ? 1 : 0)
   );
 
@@ -152,46 +277,75 @@ function pickAcupoint(
 }
 
 function pickRecipe(
-  roleId: RoleId,
+  profileHash: string,
   dateKey: string,
   solarTermKey: string,
-  roleTags: RolePreferenceTag[]
+  profileTags: RolePreferenceTag[]
 ): RecipeItem {
   const candidates = RECIPE_LIBRARY.filter((item) => item.solarTermKeys.includes(solarTermKey));
-  const ranked = sortByRelevance(candidates, `${dateKey}:${roleId}:recipe`, roleTags, () => 1);
+  const ranked = sortByRelevance(candidates, `${dateKey}:${profileHash}:recipe`, profileTags, () => 1);
 
   return ranked[0];
 }
 
-export function buildDailySnapshot(roleId: RoleId, timestamp = Date.now()): DailySnapshot {
-  const role = ROLE_PRESET_MAP[roleId];
+function buildAlmanac(
+  profile: StoredUserProfileV3,
+  profileDigest: string,
+  solarTermName: string,
+  seasonalSummary: string,
+  hexagram: DailyHexagram
+): DailySnapshot["almanac"] {
+  const primaryDo = hexagram.focusTags[0] ?? "稳住节奏";
+  const secondaryDo = hexagram.focusTags[1] ?? "留出余地";
+  const primaryDont = hexagram.avoidTags[0] ?? "节奏过满";
+  const currentPlace = profile.currentPlace.trim();
+
+  return {
+    dos: [primaryDo, secondaryDo],
+    donts: [primaryDont, hexagram.avoidTags[1] ?? "硬撑不歇"],
+    statusTitle: `今日宜${primaryDo}`,
+    statusSummary: `${currentPlace}今日按${solarTermName}与${hexagram.name}取象，适合把${secondaryDo}放在前面，少一点临时加码。`,
+    hourNote: profile.birthHourBranch
+      ? `${BIRTH_HOUR_LABELS[profile.birthHourBranch]}已纳入本地规则，结果更偏向今日节奏提醒。`
+      : "未填写出生时辰，本页不做精确时柱判断，只按出生日期与所在地估算。",
+    locationNote: `${profileDigest}；${solarTermName}时节${seasonalSummary}。`
+  };
+}
+
+export function buildDailySnapshot(profile: StoredUserProfileV3, timestamp = Date.now()): DailySnapshot {
   const calendar = getCalendarContext(timestamp);
   const solarTerm = SOLAR_TERM_MAP[calendar.solarTermKey];
+  const profileHash = buildProfileHash(profile);
+  const profileTags = deriveProfileTags(profile);
+  const profileDigest = buildProfileDigest(profile);
   const hexagramIndex =
-    (hashString(calendar.dateKey) + role.roleSeed + solarTerm.monthNumber * 3) %
+    (hashString(`${calendar.dateKey}:${profileHash}`) + solarTerm.monthNumber * 3 + getBirthDay(profile)) %
     HEXAGRAM_LIBRARY.length;
   const rawHexagram = HEXAGRAM_LIBRARY[hexagramIndex];
-  const roleDigest = role.baseStatus.slice(0, 2).join("、");
   const seasonalSummary = solarTerm.summary.replace("。", "");
   const hexagram = buildHexagramCopy(
-    role.label,
-    roleDigest,
+    profile,
+    profileDigest,
     calendar.solarTermName,
     seasonalSummary,
     rawHexagram
   );
 
   return {
-    id: `${roleId}-${calendar.dateKey}`,
-    roleId,
+    id: `${profileHash}-${calendar.dateKey}`,
+    profileHash,
+    profileLabel: `${GENDER_LABELS[profile.gender]} · ${profile.currentPlace.trim()}`,
     dateKey: calendar.dateKey,
     generatedAt: getShanghaiNowIso(timestamp),
     calendar,
     seasonalSummary: `${solarTerm.summary} 今日小提醒：${solarTerm.actions[0]}。`,
-    roleDigest,
+    profileDigest,
+    birthTimeSummary: buildBirthTimeSummary(profile),
+    locationSummary: buildLocationSummary(profile, calendar.solarTermName),
+    almanac: buildAlmanac(profile, profileDigest, calendar.solarTermName, seasonalSummary, hexagram),
     hexagram,
-    exercises: pickExercises(roleId, calendar.dateKey, solarTerm.season, role.contentTags),
-    acupoint: pickAcupoint(roleId, calendar.dateKey, solarTerm.season, role.contentTags),
-    recipe: pickRecipe(roleId, calendar.dateKey, calendar.solarTermKey, role.contentTags)
+    exercises: pickExercises(profileHash, calendar.dateKey, solarTerm.season, profileTags),
+    acupoint: pickAcupoint(profileHash, calendar.dateKey, solarTerm.season, profileTags),
+    recipe: pickRecipe(profileHash, calendar.dateKey, calendar.solarTermKey, profileTags)
   };
 }
