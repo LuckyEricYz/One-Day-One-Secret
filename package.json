@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "ffmpeg-static"
+    ]
+  },
   "scripts": {
     "dev": "node --import tsx server/dev.ts",
     "build": "vite build",
@@ -13,6 +18,7 @@
     "build:knowledge-index": "node --import tsx server/build-knowledge-index.ts",
     "eval:generate": "node --import tsx server/evaluate-generation.ts",
     "test:quality": "node --import tsx server/test-quality.ts",
+    "optimize:media": "node scripts/optimize-media.mjs",
     "ship": "node scripts/ship-issue.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "check": "pnpm typecheck && pnpm test:daily-rules && pnpm build"
@@ -31,6 +37,7 @@
     "@types/react": "^19.1.9",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",
+    "ffmpeg-static": "^5.3.0",
     "tsx": "^4.20.3",
     "typescript": "^5.9.2",
     "vite": "^7.1.3"

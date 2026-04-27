@@ -56,6 +56,7 @@
 - `tianji_v2_role_id`
 - `tianji_v2_history`
 - `tianji_v2_modal_seen`
+- `tianji_v2_role_schema`
 
 用户可以通过清除浏览器数据删除这些信息。
 

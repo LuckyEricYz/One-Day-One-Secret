@@ -6,7 +6,7 @@
 
 当前版本不再走问卷、成卦仪式或 AI 生成链路，主流程固定为：
 
-1. 首次进入选择固定男 / 女角色
+1. 首次访问 `/` 自动进入 `/role` 选择固定职场男生 / 职场女生
 2. 自动弹出今日卦象弹窗
 3. 首页直接查看 4 个模块
 4. 每天按 `Asia/Shanghai` 自然日自动更新内容
@@ -17,6 +17,7 @@
 - 带薪健身
 - 每日穴位
 - 节气食谱
+- 首页“带薪健身”包含预制动作视频演示
 
 产品口径：
 
@@ -39,11 +40,14 @@
 
 ```bash
 pnpm install
+pnpm optimize:media
 pnpm dev
 pnpm typecheck
 pnpm test:daily-rules
 pnpm build
 ```
+
+`pnpm optimize:media` 会把 `src/public/*.mov` 源素材转成运行时使用的 `public/roles/*.webm`、`public/health/*.webm` 和 poster 图片。
 
 如需查看旧的服务端生成实验，可单独执行：
 

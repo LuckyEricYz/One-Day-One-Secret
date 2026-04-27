@@ -55,7 +55,7 @@ export type HeadSense = (typeof HEAD_SENSE_OPTIONS)[number];
 export type SleepDuration = (typeof SLEEP_DURATION_OPTIONS)[number];
 export type TongueCoating = (typeof TONGUE_COATING_OPTIONS)[number];
 
-export const ROLE_IDS = ["male", "female"] as const;
+export const ROLE_IDS = ["role_a", "role_b"] as const;
 export const ROLE_PREFERENCE_TAGS = [
   "desk_relief",
   "mobility",
@@ -73,8 +73,12 @@ export type Season = (typeof SEASONS)[number];
 export type RolePreset = {
   id: RoleId;
   genderLabel: string;
+  shortLabel: string;
   label: string;
   seal: string;
+  avatarVideoSrc: string;
+  avatarPosterSrc: string;
+  avatarAlt: string;
   roleSeed: number;
   intro: string;
   baseStatus: string[];

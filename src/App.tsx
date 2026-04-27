@@ -5,6 +5,7 @@ import { HexagramGlyph } from "./components/HexagramGlyph";
 import { buildDailySnapshot } from "./shared/daily";
 import { ROLE_PRESET_MAP, ROLE_PRESETS } from "./shared/roles";
 import {
+  ensureCurrentRoleStorageSchema,
   getStoredHistoryV2,
   getStoredRoleId,
   isDailyModalSeen,
@@ -14,6 +15,37 @@ import {
 } from "./shared/storage-v2";
 import { formatDateTime, getNextShanghaiMidnightIso } from "./shared/time";
 import type { DailySnapshot, HistoryEntryV2, RoleId, RolePreset } from "./types";
+
+type AppRoute = "/" | "/role";
+
+const FITNESS_MEDIA = [
+  {
+    id: "health-2",
+    title: "办公室拉伸",
+    src: "/health/health-2.webm",
+    poster: "/health/health-2-poster.webp"
+  },
+  {
+    id: "health-3",
+    title: "肩颈放松",
+    src: "/health/health-3.webm",
+    poster: "/health/health-3-poster.webp"
+  },
+  {
+    id: "health-4",
+    title: "下肢唤醒",
+    src: "/health/health-4.webm",
+    poster: "/health/health-4-poster.webp"
+  }
+] as const;
+
+function readRoutePath(): AppRoute {
+  if (typeof window === "undefined") {
+    return "/";
+  }
+
+  return window.location.pathname === "/role" ? "/role" : "/";
+}
 
 const pageVariants = {
   initial: { opacity: 0, y: 18 },
@@ -63,6 +95,7 @@ const modalRevealVariants = {
 
 export default function App() {
   const transitionTimersRef = useRef<number[]>([]);
+  const [routePath, setRoutePath] = useState<AppRoute>(() => readRoutePath());
   const [ready, setReady] = useState(false);
   const [roleId, setRoleId] = useState<RoleId | null>(null);
   const [pendingRoleId, setPendingRoleId] = useState<RoleId | null>(null);
@@ -80,7 +113,17 @@ export default function App() {
     transitionTimersRef.current = [];
   }
 
+  function navigateToRoute(path: AppRoute, mode: "push" | "replace" = "push") {
+    if (typeof window !== "undefined" && window.location.pathname !== path) {
+      const method = mode === "replace" ? "replaceState" : "pushState";
+      window.history[method]({}, "", path);
+    }
+
+    setRoutePath(path);
+  }
+
   useEffect(() => {
+    ensureCurrentRoleStorageSchema();
     setRoleId(getStoredRoleId());
     const nextHistory = getStoredHistoryV2();
     setHistory(nextHistory);
@@ -89,8 +132,33 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const normalizedPath = readRoutePath();
+    if (window.location.pathname !== normalizedPath) {
+      window.history.replaceState({}, "", normalizedPath);
+    }
+
+    function handlePopState() {
+      setRoutePath(readRoutePath());
+    }
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
     return () => clearTransitionTimers();
   }, []);
+
+  useEffect(() => {
+    if (ready && !roleId && !pendingRoleId && routePath === "/") {
+      navigateToRoute("/role", "replace");
+    }
+  }, [pendingRoleId, ready, roleId, routePath]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -140,15 +208,24 @@ export default function App() {
   }, [nowTimestamp, roleId]);
 
   function handleSelectRole(nextRoleId: RoleId) {
-    if (nextRoleId === roleId || nextRoleId === pendingRoleId) {
+    if (nextRoleId === pendingRoleId) {
       return;
     }
 
     saveStoredRoleId(nextRoleId);
     clearTransitionTimers();
-    setPendingRoleId(nextRoleId);
     setIsHistoryOpen(false);
     setIsHexagramOpen(false);
+    navigateToRoute("/", "push");
+
+    if (nextRoleId === roleId) {
+      setPendingRoleId(null);
+      setIsRoleTransitioning(false);
+      setNowTimestamp(Date.now());
+      return;
+    }
+
+    setPendingRoleId(nextRoleId);
     setIsRoleTransitioning(true);
 
     transitionTimersRef.current.push(
@@ -187,20 +264,30 @@ export default function App() {
   const activeRole = roleId ? ROLE_PRESET_MAP[roleId] : null;
   const transitionRole =
     (pendingRoleId && ROLE_PRESET_MAP[pendingRoleId]) ?? (activeRole ? activeRole : null);
+  const isRolePage = routePath === "/role" || !activeRole || !snapshot;
 
   return (
-    <div className="relative min-h-dvh overflow-x-hidden px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-6 sm:px-6 lg:px-8">
+    <div className={`relative min-h-dvh overflow-x-hidden px-4 pb-[max(24px,env(safe-area-inset-bottom))] pt-6 sm:px-6 lg:px-8 ${isRolePage ? "app-shell--role" : ""}`}>
       <div className="paper-wash paper-wash--one" aria-hidden="true" />
       <div className="paper-wash paper-wash--two" aria-hidden="true" />
       <div className="page-grain" aria-hidden="true" />
 
       <div className="mx-auto flex min-h-[calc(100dvh-48px)] w-full max-w-7xl flex-col">
-        {activeRole && snapshot ? (
+        {isRolePage ? (
+          <RolePage
+            currentRoleId={roleId}
+            isBusy={isRoleTransitioning}
+            pendingRoleId={pendingRoleId}
+            onGoHome={() => navigateToRoute("/", "push")}
+            onSelectRole={handleSelectRole}
+          />
+        ) : activeRole && snapshot ? (
           <>
             <Header
               calendarLabel={snapshot.calendar.dateKey.replaceAll("-", ".")}
               historyCount={history.length}
               onOpenHistory={() => setIsHistoryOpen(true)}
+              onOpenRolePage={() => navigateToRoute("/role", "push")}
               solarTermName={snapshot.calendar.solarTermName}
             />
 
@@ -216,18 +303,12 @@ export default function App() {
                 homeRevealKey={homeRevealKey}
                 role={activeRole}
                 snapshot={snapshot}
-                onChangeRole={handleSelectRole}
+                onOpenRolePage={() => navigateToRoute("/role", "push")}
                 onReopenHexagram={() => setIsHexagramOpen(true)}
               />
             </motion.main>
           </>
-        ) : (
-          <RoleChooser
-            isBusy={isRoleTransitioning}
-            pendingRoleId={pendingRoleId}
-            onSelectRole={handleSelectRole}
-          />
-        )}
+        ) : null}
       </div>
 
       <AnimatePresence>
@@ -237,7 +318,7 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {snapshot && isHexagramOpen ? (
+        {routePath === "/" && snapshot && isHexagramOpen ? (
           <HexagramModal
             key={`modal-${snapshot.id}`}
             role={ROLE_PRESET_MAP[snapshot.roleId]}
@@ -248,7 +329,7 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {isHistoryOpen ? (
+        {routePath === "/" && isHistoryOpen ? (
           <HistoryDrawer
             history={history}
             selectedEntry={selectedHistory}
@@ -271,6 +352,7 @@ function Header(props: {
   solarTermName: string;
   calendarLabel: string;
   onOpenHistory: () => void;
+  onOpenRolePage: () => void;
 }) {
   return (
     <header className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -289,6 +371,9 @@ function Header(props: {
       <div className="toolstrip">
         <ToolChip>{props.solarTermName}</ToolChip>
         <ToolChip>{props.calendarLabel}</ToolChip>
+        <button className="tool-button" onClick={props.onOpenRolePage} type="button">
+          切换角色
+        </button>
         <button className="tool-button" onClick={props.onOpenHistory} type="button">
           历史快照 {props.historyCount > 0 ? `(${props.historyCount})` : ""}
         </button>
@@ -297,9 +382,11 @@ function Header(props: {
   );
 }
 
-function RoleChooser(props: {
+function RolePage(props: {
+  currentRoleId: RoleId | null;
   pendingRoleId: RoleId | null;
   isBusy: boolean;
+  onGoHome: () => void;
   onSelectRole: (roleId: RoleId) => void;
 }) {
   return (
@@ -309,108 +396,89 @@ function RoleChooser(props: {
       animate="animate"
       exit="exit"
       transition={{ duration: 0.32, ease: "easeOut" }}
-      className="flex flex-1 items-center"
+      className="role-page flex flex-1 flex-col"
     >
-      <div className="grid w-full gap-6 lg:grid-cols-[0.86fr_1.14fr]">
-        <section className="paper-panel opening-panel">
-          <div>
-            <span className="opening-seal">启卷</span>
-            <p className="mt-5 text-xs uppercase tracking-[0.32em] text-[color:var(--color-muted)]">
-              Daily Opening
-            </p>
-            <h2 className="serif-title mt-4 text-[clamp(2.2rem,5vw,4rem)] leading-[1.04] tracking-[0.04em]">
-              先定一人，
-              <br />
-              再启今天
-            </h2>
-            <p className="mt-5 max-w-xl text-sm leading-8 text-[color:var(--color-muted)] sm:text-[15px]">
-              这一版把仪式感留在入口。你只需要选定一个固定角色，系统就会替你收拢今天的卦象、动作、穴位与家常食谱。
-            </p>
-          </div>
+      <div className="role-page__toolbar">
+        <button className="role-page__icon-button" onClick={props.onGoHome} type="button" disabled={!props.currentRoleId}>
+          ‹
+        </button>
+        <div className="role-page__title-pill">
+          <span>选择角色</span>
+          <span className="role-page__mini-dot" aria-hidden="true" />
+          <span>⌄</span>
+        </div>
+      </div>
 
-          <div className="opening-verse">
-            <p className="opening-verse__text">以卦为灯，以食作调，以一日之简，换一身之稳。</p>
-          </div>
-
-          <div className="space-y-4">
-            {[
-              "选定角色，进入今天的专属节律。",
-              "先收下一张卦象纸签，再进入首页。",
-              "首页只保留四块真正会用到的内容。"
-            ].map((item, index) => (
-              <div key={item} className="opening-step">
-                <span className="opening-step__index">0{index + 1}</span>
-                <p className="text-sm leading-7 text-[color:var(--color-muted)]">{item}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
+      <div className="role-page__content">
         <motion.div
           variants={staggerVariants}
           initial="hidden"
           animate="show"
-          className="grid gap-4"
+          className="role-choice-grid"
         >
-          {ROLE_PRESETS.map((role, index) => {
+          {ROLE_PRESETS.map((role) => {
             const isPending = props.pendingRoleId === role.id;
+            const isSelected = props.currentRoleId === role.id;
             const shouldDim = props.isBusy && props.pendingRoleId !== role.id;
 
             return (
               <motion.button
                 key={role.id}
                 variants={revealVariants}
-                whileHover={props.isBusy ? undefined : { y: -4, scale: 1.01 }}
+                whileHover={props.isBusy ? undefined : { y: -6, scale: 1.01 }}
                 whileTap={props.isBusy ? undefined : { scale: 0.992 }}
-                className={`choice-card choice-card--entry ${
+                className={`choice-card choice-card--role ${
                   isPending ? "choice-card--pending" : ""
+                } ${isSelected ? "choice-card--selected" : ""
                 } ${shouldDim ? "choice-card--muted" : ""}`}
                 onClick={() => props.onSelectRole(role.id)}
                 type="button"
                 disabled={props.isBusy}
-                style={{ transformOrigin: index === 0 ? "left center" : "right center" }}
+                aria-label={`选择${role.label}`}
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.26em] text-[color:var(--color-muted)]">
-                      {role.genderLabel}
-                    </p>
-                    <h3 className="serif-title mt-3 text-3xl leading-none">{role.label}</h3>
-                  </div>
-                  <span className="seal-stamp choice-card__seal">{role.seal}</span>
+                <div className="role-card__status">
+                  {isSelected ? "默认角色" : isPending ? "确认中" : "可选择"}
                 </div>
+                <div className="role-card__avatar" aria-hidden="true">
+                  <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    preload="metadata"
+                    poster={role.avatarPosterSrc}
+                    src={role.avatarVideoSrc}
+                  />
+                  <span className="role-card__avatar-fallback">{role.shortLabel}</span>
+                </div>
+                <span className="sr-only">{role.avatarAlt}</span>
 
-                <p className="mt-5 max-w-2xl text-sm leading-7 text-[color:var(--color-muted)]">
-                  {role.intro}
-                </p>
+                <h2 className="role-card__name">{role.label}</h2>
+                <p className="role-card__intro">{role.intro}</p>
 
-                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <div className="role-card__info">
                   <InfoBlock label="基础状态" values={role.baseStatus} compact />
                   <InfoBlock label="情绪特质" values={role.emotionTraits} compact />
                 </div>
 
-                <div className="ink-divider my-5" />
+                <div className="role-card__year">
+                  <span>今年喜忌</span>
+                  <p>{role.baziSummary}</p>
+                </div>
 
-                <p className="text-sm leading-7 text-[color:var(--color-muted)]">
-                  <span className="text-[color:var(--color-ink)]">流年摘要：</span>
-                  {role.baziSummary}
-                </p>
-
-                <div className="mt-5 flex flex-wrap gap-2">
-                  {role.annualFocus.map((item) => (
-                    <SignalChip key={item} label={`今日宜 · ${item}`} tone="good" />
+                <div className="role-card__signals">
+                  {role.annualFocus.slice(0, 2).map((item) => (
+                    <SignalChip key={item} label={`宜 · ${item}`} tone="good" />
                   ))}
-                  {role.annualAvoids.map((item) => (
-                    <SignalChip key={item} label={`今日少做 · ${item}`} tone="soft" />
+                  {role.annualAvoids.slice(0, 1).map((item) => (
+                    <SignalChip key={item} label={`忌 · ${item}`} tone="soft" />
                   ))}
                 </div>
 
-                <div className="mt-7 flex items-center justify-between gap-4">
-                  <p className="text-sm leading-7 text-[color:var(--color-muted)]">
-                    {isPending ? "正在收拢今日纸签…" : "从这个角色进入今天"}
-                  </p>
-                  <span className="seal-button">{isPending ? "收印中" : "收下今日内容"}</span>
-                </div>
+                <span className="role-card__radio" aria-hidden="true" />
+                <span className="role-card__confirm">
+                  {isPending ? "正在确认" : isSelected ? "进入首页" : "确认选择"}
+                </span>
               </motion.button>
             );
           })}
@@ -424,7 +492,7 @@ function Dashboard(props: {
   homeRevealKey: number;
   role: RolePreset;
   snapshot: DailySnapshot;
-  onChangeRole: (roleId: RoleId) => void;
+  onOpenRolePage: () => void;
   onReopenHexagram: () => void;
 }) {
   const [isMobileRoleOpen, setIsMobileRoleOpen] = useState(false);
@@ -522,7 +590,7 @@ function Dashboard(props: {
         <RoleRail
           role={props.role}
           snapshot={props.snapshot}
-          onChangeRole={props.onChangeRole}
+          onOpenRolePage={props.onOpenRolePage}
           onReopenHexagram={props.onReopenHexagram}
         />
       </div>
@@ -531,7 +599,7 @@ function Dashboard(props: {
         open={isMobileRoleOpen}
         role={props.role}
         snapshot={props.snapshot}
-        onChangeRole={props.onChangeRole}
+        onOpenRolePage={props.onOpenRolePage}
         onReopenHexagram={props.onReopenHexagram}
         onToggle={() => setIsMobileRoleOpen((value) => !value)}
       />
@@ -545,6 +613,22 @@ function Dashboard(props: {
       >
         <motion.section variants={revealVariants} className="paper-panel service-card service-card--exercise">
           <ServiceHeader eyebrow="带薪健身" title={`${props.snapshot.exercises.length} 个轻动作`} />
+          <div className="fitness-media-grid" aria-label="带薪健身动作演示">
+            {FITNESS_MEDIA.map((item) => (
+              <div key={item.id} className="fitness-media-card">
+                <video
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  preload="metadata"
+                  poster={item.poster}
+                  src={item.src}
+                />
+                <span>{item.title}</span>
+              </div>
+            ))}
+          </div>
           <div className="mt-5 space-y-4">
             {props.snapshot.exercises.map((item, index) => (
               <div key={item.id} className="exercise-item">
@@ -613,7 +697,7 @@ function Dashboard(props: {
 function RoleRail(props: {
   role: RolePreset;
   snapshot: DailySnapshot;
-  onChangeRole: (roleId: RoleId) => void;
+  onOpenRolePage: () => void;
   onReopenHexagram: () => void;
 }) {
   return (
@@ -629,20 +713,13 @@ function RoleRail(props: {
       </div>
 
       <div className="role-rail__section">
-        <p className="role-rail__section-label">角色切换</p>
-        <div className="role-rail__switch">
-          {ROLE_PRESETS.map((role) => (
-            <button
-              key={role.id}
-              className={`role-tab ${props.role.id === role.id ? "role-tab--active" : ""}`}
-              onClick={() => props.onChangeRole(role.id)}
-              type="button"
-              disabled={props.role.id === role.id}
-            >
-              {role.genderLabel}
-            </button>
-          ))}
-        </div>
+        <p className="role-rail__section-label">当前角色</p>
+        <p className="mt-3 text-sm leading-7 text-[color:var(--color-muted)]">
+          {props.role.genderLabel} · {props.role.shortLabel}
+        </p>
+        <button className="ghost-button role-rail__action" onClick={props.onOpenRolePage} type="button">
+          切换角色
+        </button>
       </div>
 
       <div className="role-rail__section">
@@ -680,7 +757,7 @@ function RoleMobileAccordion(props: {
   snapshot: DailySnapshot;
   open: boolean;
   onToggle: () => void;
-  onChangeRole: (roleId: RoleId) => void;
+  onOpenRolePage: () => void;
   onReopenHexagram: () => void;
 }) {
   return (
@@ -701,20 +778,6 @@ function RoleMobileAccordion(props: {
       </button>
 
       <div className={`role-mobile-card__content ${props.open ? "role-mobile-card__content--open" : ""}`}>
-        <div className="mt-5 flex gap-2">
-          {ROLE_PRESETS.map((role) => (
-            <button
-              key={role.id}
-              className={`role-tab ${props.role.id === role.id ? "role-tab--active" : ""}`}
-              onClick={() => props.onChangeRole(role.id)}
-              type="button"
-              disabled={props.role.id === role.id}
-            >
-              {role.genderLabel}
-            </button>
-          ))}
-        </div>
-
         <div className="mt-5 grid gap-4">
           <InfoBlock label="基础状态" values={props.role.baseStatus} compact />
           <p className="text-sm leading-7 text-[color:var(--color-muted)]">
@@ -725,6 +788,9 @@ function RoleMobileAccordion(props: {
             <span className="text-[color:var(--color-ink)]">今日提醒：</span>
             {props.snapshot.seasonalSummary}
           </p>
+          <button className="ghost-button" onClick={props.onOpenRolePage} type="button">
+            切换角色
+          </button>
           <button className="ghost-button" onClick={props.onReopenHexagram} type="button">
             重看今日卦象
           </button>

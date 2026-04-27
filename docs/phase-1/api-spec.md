@@ -14,13 +14,17 @@
 ### 2.1 角色预设
 
 ```ts
-type RoleId = "male" | "female";
+type RoleId = "role_a" | "role_b";
 
 type RolePreset = {
   id: RoleId;
   genderLabel: string;
+  shortLabel: string;
   label: string;
   seal: string;
+  avatarVideoSrc: string;
+  avatarPosterSrc: string;
+  avatarAlt: string;
   roleSeed: number;
   intro: string;
   baseStatus: string[];
@@ -68,6 +72,7 @@ type HistoryEntryV2 = {
 tianji_v2_role_id
 tianji_v2_history
 tianji_v2_modal_seen
+tianji_v2_role_schema
 ```
 
 规则：
@@ -75,6 +80,7 @@ tianji_v2_modal_seen
 - `tianji_v2_role_id` 只保存当前角色
 - `tianji_v2_history` 保存去重后的历史快照
 - `tianji_v2_modal_seen` 记录 `${roleId}:${dateKey}` 是否已读
+- `tianji_v2_role_schema` 标记当前角色 schema，改版后首次启动会清理旧角色历史
 
 ## 4. 行为规则
 

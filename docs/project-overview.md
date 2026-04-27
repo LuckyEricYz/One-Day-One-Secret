@@ -7,7 +7,7 @@
 当前版本把每日内容收敛成一张轻量日历面板：
 
 - 天：上海日期、节气、干支
-- 人：固定男 / 女角色预设
+- 人：固定职场男生 / 职场女生角色预设
 - 用：卦象提示、轻动作、穴位、家常食谱
 
 目标不是算命，也不是健康诊断，而是提供一套简单、可重复、零学习成本的每日调理建议。
@@ -37,7 +37,7 @@
 | 模块 | 当前决策 | 说明 |
 |:-----|:---------|:-----|
 | 前端 | Vite + React | 单仓 Web/H5 共用 |
-| 样式 | Tailwind CSS + CSS 变量 | 纸本留白主题 |
+| 样式 | Tailwind CSS + CSS 变量 | 黄底卡通纸面主题 |
 | 内容生成 | 纯本地规则 | 角色预设 + 日期 + 节气 + 内容池 |
 | 存储 | LocalStorage | 当前角色、弹窗已读、历史快照 |
 | 对外接口 | 无必需运行时接口 | `/api/generate` 不再是当前主链路 |
@@ -48,17 +48,20 @@
 
 ```json
 {
-  "id": "male",
-  "genderLabel": "男角色",
-  "label": "乾行先生",
-  "seal": "乾",
+  "id": "role_a",
+  "genderLabel": "职场男生",
+  "shortLabel": "男生",
+  "label": "职场男生",
+  "seal": "元",
+  "avatarVideoSrc": "/roles/role_a.webm",
+  "avatarPosterSrc": "/roles/role_a-poster.webp",
   "roleSeed": 11,
-  "intro": "工作节奏偏快，久坐与应酬都不少。",
-  "baseStatus": ["久坐后肩颈紧", "忙时吃饭偏快", "晚上容易继续硬撑"],
-  "baziSummary": "木火偏旺，今年更宜疏肝理气、稳睡眠。",
-  "annualFocus": ["先伸展后发力", "晚间少酒少辣"],
-  "annualAvoids": ["连续熬夜顶状态"],
-  "emotionTraits": ["起势快，容易硬扛"],
+  "intro": "日程排得满，会议和久坐都不少。",
+  "baseStatus": ["肩颈容易紧", "午后脑子发沉", "忙起来常忘记喝水"],
+  "baziSummary": "元亨利贞，今年更宜先稳节律再求推进。",
+  "annualFocus": ["任务先分段", "午后起身活动"],
+  "annualAvoids": ["连续久坐不动"],
+  "emotionTraits": ["启动快，容易把疲惫藏起来"],
   "contentTags": ["desk_relief", "mobility", "sleep_regulation"]
 }
 ```
@@ -67,8 +70,8 @@
 
 ```json
 {
-  "id": "male-2026-04-22",
-  "roleId": "male",
+  "id": "role_a-2026-04-22",
+  "roleId": "role_a",
   "dateKey": "2026-04-22",
   "calendar": {
     "solarTermKey": "guyu",
@@ -92,8 +95,8 @@
 ```json
 [
   {
-    "id": "male-2026-04-22",
-    "roleId": "male",
+    "id": "role_a-2026-04-22",
+    "roleId": "role_a",
     "dateKey": "2026-04-22",
     "savedAt": "2026-04-22T01:20:00.000Z",
     "snapshot": { "...": "完整 DailySnapshot" }

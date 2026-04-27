@@ -29,6 +29,6 @@
 
 - 当前主链路：固定双角色 + 今日卦象弹窗 + 首页四模块
 - 内容来源：纯本地规则化，不依赖实时网络或模型调用
-- 本地键：`tianji_v2_role_id`、`tianji_v2_history`、`tianji_v2_modal_seen`
+- 本地键：`tianji_v2_role_id`、`tianji_v2_history`、`tianji_v2_modal_seen`、`tianji_v2_role_schema`
 - 历史规则：每个角色每天 1 条快照
 - 旧服务端生成链路仅作为保留实验，不是现行主链路
