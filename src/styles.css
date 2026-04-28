@@ -1,24 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  --color-page-bg: #f5c95c;
-  --color-paper: #fffbea;
-  --color-paper-deep: #ffedb7;
-  --color-paper-shadow: rgba(111, 59, 20, 0.16);
+  --color-page-bg: #e8f1e7;
+  --color-paper: #fffdf1;
+  --color-paper-deep: #edf4df;
+  --color-paper-shadow: rgba(66, 90, 65, 0.14);
   --color-ink: #241b14;
-  --color-muted: #6f6252;
-  --color-vermillion: #d9542d;
-  --color-gold: #f0aa1d;
+  --color-muted: #686452;
+  --color-vermillion: #c95738;
+  --color-gold: #e8ae42;
   --color-positive: #587047;
   --color-health: #6f9f68;
   --color-health-deep: #3f6f46;
   --color-health-soft: rgba(111, 159, 104, 0.1);
   --color-health-line: rgba(111, 159, 104, 0.24);
   --color-negative: #9a503d;
-  --color-line: rgba(117, 64, 26, 0.42);
-  --color-border-strong: #8a4b1d;
-  --shadow-soft: 0 16px 0 rgba(126, 72, 39, 0.08);
-  --shadow-card: 0 18px 0 rgba(126, 72, 39, 0.1);
+  --color-line: rgba(104, 83, 54, 0.34);
+  --color-border-strong: #8b6a3e;
+  --shadow-soft: 0 16px 0 rgba(80, 95, 63, 0.06);
+  --shadow-card: 0 18px 0 rgba(80, 95, 63, 0.08);
 }
 
 html,
@@ -35,12 +35,14 @@ body {
   margin: 0;
   color: var(--color-ink);
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px),
-    linear-gradient(180deg, #ffeaa0 0%, #f8d06c 48%, #efba3f 100%);
+    linear-gradient(90deg, rgba(84, 119, 85, 0.08) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(84, 119, 85, 0.07) 1px, transparent 1px),
+    radial-gradient(circle at 78% 8%, rgba(183, 219, 203, 0.5), transparent 28%),
+    linear-gradient(160deg, #eef6ec 0%, #f8f1d7 52%, #dcebdc 100%);
   background-size:
     22px 22px,
     22px 22px,
+    auto,
     auto;
   background-attachment: fixed;
   font-family:
@@ -62,16 +64,18 @@ body::after {
 
 body::before {
   background-image:
-    linear-gradient(0deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.12)),
-    repeating-linear-gradient(45deg, rgba(120, 64, 28, 0.025) 0 1px, transparent 1px 9px);
+    linear-gradient(0deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.1)),
+    repeating-linear-gradient(45deg, rgba(58, 92, 67, 0.018) 0 1px, transparent 1px 9px);
   mix-blend-mode: multiply;
-  opacity: 0.72;
+  opacity: 0.54;
 }
 
 body::after {
   background:
-    linear-gradient(180deg, rgba(255, 249, 204, 0.42), rgba(255, 224, 120, 0.1));
-  opacity: 0.68;
+    radial-gradient(circle at 20% 14%, rgba(111, 159, 104, 0.18), transparent 28%),
+    radial-gradient(circle at 86% 8%, rgba(221, 194, 120, 0.16), transparent 30%),
+    linear-gradient(180deg, rgba(255, 253, 240, 0.3), rgba(220, 235, 220, 0.1));
+  opacity: 0.5;
   animation: ambientPulse 18s ease-in-out infinite alternate;
 }
 
@@ -95,9 +99,9 @@ button {
   inset: 0;
   pointer-events: none;
   background-image:
-    radial-gradient(circle at 1px 1px, rgba(100, 76, 51, 0.06) 1px, transparent 0);
+    radial-gradient(circle at 1px 1px, rgba(49, 83, 60, 0.045) 1px, transparent 0);
   background-size: 20px 20px;
-  opacity: 0.22;
+  opacity: 0.16;
   mix-blend-mode: multiply;
   animation: grainShift 20s linear infinite;
 }
@@ -107,7 +111,7 @@ button {
   border-radius: 9999px;
   filter: blur(56px);
   pointer-events: none;
-  opacity: 0.58;
+  opacity: 0.5;
   animation: washFloat 18s ease-in-out infinite alternate;
 }
 
@@ -116,7 +120,7 @@ button {
   left: -5%;
   width: 22rem;
   height: 22rem;
-  background: rgba(182, 72, 50, 0.16);
+  background: rgba(111, 159, 104, 0.16);
 }
 
 .paper-wash--two {
@@ -124,7 +128,7 @@ button {
   bottom: 10%;
   width: 22rem;
   height: 22rem;
-  background: rgba(155, 123, 70, 0.16);
+  background: rgba(221, 194, 120, 0.14);
   animation-duration: 22s;
 }
 
@@ -134,8 +138,8 @@ button {
   overflow: hidden;
   border: 3px solid var(--color-border-strong);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.28)),
-    linear-gradient(180deg, rgba(255, 250, 225, 0.98), rgba(255, 238, 181, 0.96));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.34)),
+    linear-gradient(160deg, rgba(255, 253, 241, 0.98), rgba(237, 244, 223, 0.94));
   box-shadow: var(--shadow-card);
   backdrop-filter: blur(3px);
 }
@@ -157,11 +161,11 @@ button {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.14), transparent 18%, transparent 82%, rgba(255, 255, 255, 0.1)),
-    radial-gradient(circle at 12% 20%, rgba(120, 86, 51, 0.07), transparent 24%),
-    radial-gradient(circle at 84% 22%, rgba(120, 86, 51, 0.05), transparent 20%);
+    linear-gradient(90deg, rgba(255, 255, 255, 0.16), transparent 18%, transparent 82%, rgba(255, 255, 255, 0.12)),
+    radial-gradient(circle at 12% 20%, rgba(111, 159, 104, 0.055), transparent 24%),
+    radial-gradient(circle at 84% 22%, rgba(221, 194, 120, 0.055), transparent 20%);
   mix-blend-mode: multiply;
-  opacity: 0.66;
+  opacity: 0.52;
 }
 
 .paper-panel::after,
@@ -217,18 +221,18 @@ button {
 
 .seal-button {
   border: 3px solid var(--color-border-strong);
-  background: linear-gradient(180deg, #ffc840, #f3a719);
+  background: linear-gradient(180deg, #f7c85c, #e9a93a);
   color: #26140b;
-  box-shadow: 0 6px 0 rgba(126, 72, 39, 0.18);
+  box-shadow: 0 6px 0 rgba(97, 91, 57, 0.14);
   font-weight: 700;
 }
 
 .ghost-button,
 .tool-button {
   border: 2px solid var(--color-border-strong);
-  background: rgba(255, 253, 235, 0.72);
+  background: rgba(255, 253, 241, 0.76);
   color: var(--color-ink);
-  box-shadow: 0 4px 0 rgba(126, 72, 39, 0.08);
+  box-shadow: 0 4px 0 rgba(80, 95, 63, 0.07);
 }
 
 .seal-button:hover,
@@ -262,7 +266,7 @@ button {
     rgba(182, 72, 50, 0.08);
   box-shadow:
     inset 0 0 0 1px rgba(182, 72, 50, 0.06),
-    0 8px 18px rgba(126, 72, 39, 0.08);
+    0 8px 18px rgba(80, 95, 63, 0.07);
 }
 
 .seal-stamp {
@@ -280,42 +284,55 @@ button {
 }
 
 .app-nav {
-  margin-top: 1rem;
-  display: inline-flex;
+  margin-top: 1.05rem;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem;
-  border: 2px solid rgba(117, 64, 26, 0.24);
-  border-radius: 999px;
-  background: rgba(255, 253, 235, 0.5);
-  padding: 0.28rem;
-  box-shadow: 0 5px 0 rgba(126, 72, 39, 0.06);
+  gap: 0.65rem;
 }
 
 .app-nav__link {
   display: inline-flex;
-  min-height: 2.25rem;
+  min-height: 2.55rem;
   align-items: center;
   justify-content: center;
+  gap: 0.38rem;
+  border: 2px solid rgba(104, 83, 54, 0.26);
   border-radius: 999px;
-  padding: 0.36rem 0.82rem;
+  background: rgba(255, 253, 241, 0.62);
+  padding: 0.46rem 0.95rem;
   color: var(--color-muted);
   font-size: 0.9rem;
-  font-weight: 700;
+  font-weight: 800;
   text-decoration: none;
+  box-shadow: 0 4px 0 rgba(80, 95, 63, 0.05);
   transition:
     background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
     color 180ms ease,
     transform 180ms ease;
 }
 
 .app-nav__link:hover {
   transform: translateY(-1px);
+  border-color: rgba(104, 83, 54, 0.4);
+  background: rgba(255, 253, 241, 0.86);
 }
 
 .app-nav__link--active {
-  background: #fff9df;
+  border-color: rgba(139, 106, 62, 0.34);
+  background: rgba(255, 253, 241, 0.88);
   color: var(--color-border-strong);
-  box-shadow: inset 0 0 0 1px rgba(117, 64, 26, 0.1);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.42),
+    0 4px 0 rgba(80, 95, 63, 0.07);
+}
+
+.app-nav__external-mark {
+  font-size: 0.78rem;
+  line-height: 1;
+  opacity: 0.72;
 }
 
 .tool-chip {
@@ -324,8 +341,8 @@ button {
   justify-content: center;
   min-height: 42px;
   border-radius: 999px;
-  border: 2px solid rgba(117, 64, 26, 0.34);
-  background: rgba(255, 253, 235, 0.68);
+  border: 2px solid rgba(104, 83, 54, 0.3);
+  background: rgba(255, 253, 241, 0.7);
   padding: 0.55rem 0.95rem;
   font-size: 0.9rem;
   color: var(--color-muted);
@@ -632,9 +649,9 @@ button {
 .profile-field select {
   width: 100%;
   min-height: 54px;
-  border: 2px solid rgba(117, 64, 26, 0.28);
+  border: 2px solid rgba(104, 83, 54, 0.26);
   border-radius: 18px;
-  background: rgba(255, 253, 235, 0.76);
+  background: rgba(255, 253, 241, 0.78);
   padding: 0.72rem 0.95rem;
   color: var(--color-ink);
   outline: none;
@@ -647,30 +664,58 @@ button {
 .profile-field input:focus,
 .profile-field select:focus {
   border-color: var(--color-border-strong);
-  background: #fffdf0;
-  box-shadow: 0 0 0 4px rgba(138, 75, 29, 0.08);
+  background: var(--color-paper);
+  box-shadow: 0 0 0 4px rgba(91, 128, 88, 0.1);
 }
 
 .profile-segment {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.65rem;
+  min-width: 0;
+  gap: 0.25rem;
+  border: 2px solid rgba(104, 83, 54, 0.22);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(237, 244, 223, 0.2)),
+    rgba(255, 253, 241, 0.68);
+  padding: 0.25rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 4px 0 rgba(80, 95, 63, 0.04);
 }
 
 .profile-segment__button {
-  min-height: 54px;
-  border: 2px solid rgba(117, 64, 26, 0.28);
-  border-radius: 18px;
-  background: rgba(255, 253, 235, 0.68);
+  min-width: 0;
+  min-height: 48px;
+  border: 1px solid transparent;
+  border-radius: 17px;
+  background: transparent;
   color: var(--color-muted);
+  font-size: 1rem;
   font-weight: 900;
+  box-shadow: none;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.profile-segment__button:hover {
+  color: var(--color-ink);
+  background: rgba(255, 255, 255, 0.38);
 }
 
 .profile-segment__button--active {
-  border-color: var(--color-border-strong);
-  background: linear-gradient(180deg, #ffd85f, #f4b431);
-  color: var(--color-ink);
-  box-shadow: 0 5px 0 rgba(126, 72, 39, 0.12);
+  border-color: rgba(88, 112, 71, 0.42);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 48%),
+    linear-gradient(180deg, #d7eacb, #9fc18e);
+  color: #223a22;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    0 3px 0 rgba(64, 97, 65, 0.14);
 }
 
 .profile-form__footer {
@@ -690,6 +735,18 @@ button {
 
 .profile-form__submit {
   min-width: min(100%, 15rem);
+  border-color: #547a4d;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 46%),
+    linear-gradient(180deg, #8fb979, #5f9467);
+  color: #fffdf1;
+  box-shadow: 0 6px 0 rgba(47, 91, 53, 0.18);
+}
+
+.profile-form__submit:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), transparent 46%),
+    linear-gradient(180deg, #98c284, #659d6e);
 }
 
 .role-choice-grid {
@@ -709,7 +766,7 @@ button {
   border-radius: clamp(2rem, 4vw, 4.2rem);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.28)),
-    #fff8dc;
+    var(--color-paper);
   text-align: center;
 }
 
@@ -720,13 +777,13 @@ button {
 
 .choice-card--selected {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 242, 197, 0.64)),
-    #fff3bd;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(237, 244, 223, 0.64)),
+    var(--color-paper-deep);
 }
 
 .role-card__status {
   justify-self: flex-start;
-  border: 2px solid rgba(117, 64, 26, 0.42);
+  border: 2px solid rgba(104, 83, 54, 0.34);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.66);
   padding: 0.36rem 0.85rem;
@@ -743,8 +800,8 @@ button {
   overflow: hidden;
   border-radius: 44px;
   background:
-    radial-gradient(circle at 50% 76%, rgba(229, 168, 54, 0.16), transparent 34%),
-    rgba(255, 255, 255, 0.08);
+    radial-gradient(circle at 50% 76%, rgba(111, 159, 104, 0.13), transparent 34%),
+    rgba(255, 255, 255, 0.14);
 }
 
 .role-card__avatar video {
@@ -788,7 +845,7 @@ button {
 
 .role-card__year {
   width: 100%;
-  border: 2px solid rgba(117, 64, 26, 0.24);
+  border: 2px solid rgba(104, 83, 54, 0.22);
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.52);
   padding: 0.9rem 1rem;
@@ -822,24 +879,24 @@ button {
   height: 3rem;
   border: 4px solid var(--color-border-strong);
   border-radius: 999px;
-  background: #fffaf0;
+  background: var(--color-paper);
 }
 
 .choice-card--selected .role-card__radio {
-  box-shadow: inset 0 0 0 0.55rem #fffaf0;
-  background: #f0aa1d;
+  box-shadow: inset 0 0 0 0.55rem var(--color-paper);
+  background: var(--color-gold);
 }
 
 .role-card__confirm {
   min-width: min(80%, 18rem);
   border: 4px solid var(--color-border-strong);
   border-radius: 999px;
-  background: linear-gradient(180deg, #ffd54d, #f6ad1e);
+  background: linear-gradient(180deg, #f7c85c, #e9a93a);
   padding: 0.8rem 1.5rem;
   font-size: clamp(1.35rem, 3vw, 2rem);
   font-weight: 900;
   color: #1f120a;
-  box-shadow: 0 6px 0 rgba(126, 72, 39, 0.12);
+  box-shadow: 0 6px 0 rgba(97, 91, 57, 0.11);
 }
 
 .dashboard-shell {
@@ -858,8 +915,8 @@ button {
   padding: clamp(1.4rem, 2vw, 1.95rem);
   border-width: 4px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.28)),
-    #fff8df;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.32)),
+    var(--color-paper);
 }
 
 .hero-card::before {
@@ -872,8 +929,8 @@ button {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 78% 18%, rgba(182, 72, 50, 0.08), transparent 22%),
-    radial-gradient(circle at 22% 82%, rgba(155, 123, 70, 0.08), transparent 24%);
+    radial-gradient(circle at 78% 18%, rgba(111, 159, 104, 0.09), transparent 22%),
+    radial-gradient(circle at 22% 82%, rgba(221, 194, 120, 0.08), transparent 24%);
 }
 
 .hero-card__topline {
@@ -915,10 +972,10 @@ button {
   position: relative;
   overflow: hidden;
   border-radius: 32px;
-  border: 3px solid rgba(117, 64, 26, 0.34);
+  border: 3px solid rgba(104, 83, 54, 0.28);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(255, 245, 201, 0.28)),
-    rgba(255, 249, 220, 0.78);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(237, 244, 223, 0.3)),
+    rgba(255, 253, 241, 0.78);
   padding: 1.4rem;
   display: flex;
   flex-direction: column;
@@ -935,15 +992,15 @@ button {
   width: 8rem;
   height: 8rem;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(182, 72, 50, 0.18), transparent 66%);
+  background: radial-gradient(circle, rgba(111, 159, 104, 0.18), transparent 66%);
   filter: blur(10px);
 }
 
 .hero-card__altar-mark {
   align-self: flex-end;
   border-radius: 999px;
-  border: 1px solid rgba(117, 64, 26, 0.18);
-  background: rgba(255, 253, 235, 0.68);
+  border: 1px solid rgba(104, 83, 54, 0.16);
+  background: rgba(255, 253, 241, 0.7);
   padding: 0.28rem 0.72rem;
   font-size: 0.82rem;
   font-weight: 700;
@@ -1075,14 +1132,14 @@ button {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border: 2px solid rgba(138, 75, 29, 0.22);
+  border: 2px solid rgba(104, 83, 54, 0.22);
   border-radius: 999px;
   background:
-    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.86), rgba(255, 240, 187, 0.64)),
-    #fff8df;
+    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.86), rgba(237, 244, 223, 0.64)),
+    var(--color-paper);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.58),
-    0 6px 0 rgba(126, 72, 39, 0.08);
+    0 6px 0 rgba(80, 95, 63, 0.07);
 }
 
 .profile-avatar video {
@@ -1215,16 +1272,16 @@ button {
 .service-card {
   min-height: 100%;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.22)),
-    #fff8df;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.26)),
+    var(--color-paper);
 }
 
 .service-card--exercise {
   min-height: 28rem;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.28)),
-    linear-gradient(135deg, rgba(111, 159, 104, 0.08), transparent 42%),
-    #fffbea;
+    linear-gradient(135deg, rgba(111, 159, 104, 0.1), transparent 42%),
+    var(--color-paper);
 }
 
 .fitness-media-grid {
@@ -1240,7 +1297,7 @@ button {
   border: 3px solid var(--color-health-line);
   border-radius: 28px;
   aspect-ratio: 4 / 3;
-  background: #f8f3cf;
+  background: #eef5df;
 }
 
 .fitness-media-card video {
@@ -1304,7 +1361,7 @@ button {
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: rgba(30, 21, 15, 0.42);
+  background: rgba(24, 36, 27, 0.36);
   backdrop-filter: blur(14px);
 }
 
@@ -1334,7 +1391,7 @@ button {
   border: 1px solid rgba(54, 33, 16, 0.12);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.1)),
-    rgba(247, 240, 223, 0.72);
+    rgba(255, 253, 241, 0.74);
   padding: 1.4rem;
   min-height: 22rem;
 }
@@ -1346,7 +1403,7 @@ button {
   width: 12rem;
   height: 12rem;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(182, 72, 50, 0.22), transparent 66%);
+  background: radial-gradient(circle, rgba(111, 159, 104, 0.2), transparent 66%);
   filter: blur(12px);
 }
 
@@ -1709,14 +1766,14 @@ button {
   }
 
   .app-nav {
-    width: 100%;
-    justify-content: center;
+    width: auto;
+    justify-content: flex-start;
   }
 
   .app-nav__link {
-    flex: 1;
+    flex: none;
     min-width: 0;
-    padding-inline: 0.65rem;
+    padding-inline: 0.82rem;
   }
 
   .tool-chip,

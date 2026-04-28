@@ -371,6 +371,7 @@ function Header(props: {
             target="_blank"
           >
             身体节律
+            <span className="app-nav__external-mark" aria-hidden="true">↗</span>
           </a>
         </nav>
         <h1 className="serif-title mt-3 text-[clamp(2.8rem,7vw,5.6rem)] leading-[0.92] tracking-[0.03em]">
@@ -505,8 +506,8 @@ function ProfilePage(props: {
     >
       <div className="profile-page__content">
         <motion.div variants={revealVariants} initial="hidden" animate="show" className="profile-page__theme">
-          <span className="profile-page__brand">One Day One Secret</span>
-          <h1 className="serif-title profile-page__theme-title">一日天机</h1>
+          <span className="profile-page__brand">Cyber Wellness</span>
+          <h1 className="serif-title profile-page__theme-title">赛博养生</h1>
           <p>
             以出生信息、所在城市与今日节气，生成一页本地黄历和轻养生节律。
           </p>
